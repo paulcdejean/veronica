@@ -11,7 +11,7 @@ randomly generated gateway token. The bootstrap installs:
 - Ubuntu 26.04 LTS from the `ubuntu-2604-lts-amd64` image family
 - Node.js LTS `24.18.0`, verified against its published SHA-256 checksum
 - OpenClaw `2026.6.11`, configured for `openai/gpt-5.5`
-- OpenClaw's bundled Codex app-server plugin/runtime
+- The official `@openclaw/codex` app-server plugin/runtime `2026.6.11`
 - The standalone `@openai/codex` CLI `0.144.1`
 - An always-on systemd gateway service under a dedicated `openclaw` user
 

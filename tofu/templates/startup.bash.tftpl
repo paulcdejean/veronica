@@ -37,6 +37,14 @@ install -d -o openclaw -g openclaw -m 0700 \
   /home/openclaw/.openclaw/workspace \
   /home/openclaw/.codex
 
+install -d -o root -g openclaw -m 0750 /etc/openclaw
+if [ ! -s /etc/openclaw/gateway.env ]; then
+  umask 0027
+  printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >/etc/openclaw/gateway.env
+  chown root:openclaw /etc/openclaw/gateway.env
+fi
+gateway_token="$(sed -n 's/^OPENCLAW_GATEWAY_TOKEN=//p' /etc/openclaw/gateway.env)"
+
 cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
 {
   gateway: {
@@ -64,12 +72,10 @@ JSON
 chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json
 chmod 0600 /home/openclaw/.openclaw/openclaw.json
 
-install -d -o root -g openclaw -m 0750 /etc/openclaw
-if [ ! -s /etc/openclaw/gateway.env ]; then
-  umask 0027
-  printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >/etc/openclaw/gateway.env
-  chown root:openclaw /etc/openclaw/gateway.env
-fi
+runuser --user openclaw -- env HOME=/home/openclaw \
+  OPENCLAW_GATEWAY_TOKEN="$${gateway_token}" \
+  /usr/local/bin/openclaw plugins install \
+  "npm:@openclaw/codex@${codex_plugin_version}" --force --pin
 
 cat >/etc/systemd/system/openclaw-gateway.service <<'UNIT'
 [Unit]

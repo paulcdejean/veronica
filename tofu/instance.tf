@@ -27,6 +27,7 @@ resource "google_compute_instance" "openclaw" {
     node_version          = local.workspace.node_version
     node_linux_x64_sha256 = local.workspace.node_linux_x64_sha256
     openclaw_version      = local.workspace.openclaw_version
+    codex_plugin_version  = local.workspace.codex_plugin_version
     codex_version         = local.workspace.codex_version
   })
 
