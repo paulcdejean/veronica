@@ -32,6 +32,28 @@ resource "google_compute_router_nat" "openclaw" {
   }
 }
 
+resource "google_compute_address" "openclaw" {
+  name   = "openclaw-${tofu.workspace}"
+  region = local.workspace.region
+
+  depends_on = [google_project_service.enabled["compute.googleapis.com"]]
+}
+
+resource "google_compute_firewall" "cloudflare_voice_webhook" {
+  name      = "openclaw-${tofu.workspace}-cloudflare-voice"
+  network   = google_compute_network.openclaw.name
+  direction = "INGRESS"
+  priority  = 1000
+
+  source_ranges = data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs
+  target_tags   = ["openclaw-${tofu.workspace}"]
+
+  allow {
+    protocol = "tcp"
+    ports    = [tostring(local.workspace.voice_webhook_port)]
+  }
+}
+
 resource "google_compute_firewall" "iap_ssh" {
   name      = "openclaw-${tofu.workspace}-iap-ssh"
   network   = google_compute_network.openclaw.name

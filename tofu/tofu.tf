@@ -2,6 +2,11 @@ terraform {
   required_version = "1.12.3"
 
   required_providers {
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "5.22.0"
+    }
+
     google = {
       source  = "hashicorp/google"
       version = "7.39.0"
@@ -29,3 +34,6 @@ provider "google" {
   region  = local.workspace.region
   zone    = local.workspace.zone
 }
+
+# Reads CLOUDFLARE_API_TOKEN from the environment.
+provider "cloudflare" {}

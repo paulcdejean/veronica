@@ -17,6 +17,11 @@ locals {
       openclaw_version      = "2026.6.11"
       codex_plugin_version  = "2026.6.11"
       codex_version         = "0.144.1"
+
+      voice_call_plugin_version = "2026.6.11"
+      voice_zone                = "veronica-agent.com"
+      voice_hostname            = "voice.veronica-agent.com"
+      voice_webhook_port        = 3334
     }
   }
 }

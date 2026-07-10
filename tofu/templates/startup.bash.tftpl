@@ -49,6 +49,13 @@ if [ ! -s /home/openclaw/.openclaw/.env ]; then
   fi
 fi
 
+# Placeholder until a real caller number is configured; Twilio credentials
+# (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) are read from
+# this file by the voice-call plugin and are never written by the bootstrap.
+if ! grep -q '^VOICE_ALLOW_FROM=' /home/openclaw/.openclaw/.env; then
+  printf 'VOICE_ALLOW_FROM=+15005550006\n' >>/home/openclaw/.openclaw/.env
+fi
+
 cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
 {
   gateway: {
@@ -63,6 +70,24 @@ cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
   plugins: {
     entries: {
       codex: { enabled: true },
+      "voice-call": {
+        enabled: true,
+        config: {
+          provider: "twilio",
+          inboundPolicy: "allowlist",
+          allowFrom: ["$${VOICE_ALLOW_FROM}"],
+          publicUrl: "https://${voice_hostname}/voice/webhook",
+          serve: {
+            bind: "0.0.0.0",
+            port: ${voice_webhook_port},
+            path: "/voice/webhook",
+          },
+          webhookSecurity: {
+            allowedHosts: ["${voice_hostname}"],
+            trustForwardingHeaders: true,
+          },
+        },
+      },
     },
   },
   agents: {
@@ -79,6 +104,10 @@ chmod 0600 /home/openclaw/.openclaw/openclaw.json
 runuser --user openclaw -- env HOME=/home/openclaw \
   /usr/local/bin/openclaw plugins install \
   "npm:@openclaw/codex@${codex_plugin_version}" --force --pin
+
+runuser --user openclaw -- env HOME=/home/openclaw \
+  /usr/local/bin/openclaw plugins install \
+  "npm:@openclaw/voice-call@${voice_call_plugin_version}" --force --pin
 
 cat >/etc/systemd/system/openclaw-gateway.service <<'UNIT'
 [Unit]

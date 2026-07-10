@@ -16,20 +16,29 @@ resource "google_compute_instance" "openclaw" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.openclaw.id
+
+    access_config {
+      nat_ip = google_compute_address.openclaw.address
+    }
   }
 
   metadata = {
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
-  }
 
-  metadata_startup_script = templatefile("${path.module}/templates/startup.bash.tftpl", {
-    node_version          = local.workspace.node_version
-    node_linux_x64_sha256 = local.workspace.node_linux_x64_sha256
-    openclaw_version      = local.workspace.openclaw_version
-    codex_plugin_version  = local.workspace.codex_plugin_version
-    codex_version         = local.workspace.codex_version
-  })
+    # As a metadata key (rather than metadata_startup_script) the script
+    # updates in place; reboot the VM to rerun the bootstrap.
+    startup-script = templatefile("${path.module}/templates/startup.bash.tftpl", {
+      node_version              = local.workspace.node_version
+      node_linux_x64_sha256     = local.workspace.node_linux_x64_sha256
+      openclaw_version          = local.workspace.openclaw_version
+      codex_plugin_version      = local.workspace.codex_plugin_version
+      codex_version             = local.workspace.codex_version
+      voice_call_plugin_version = local.workspace.voice_call_plugin_version
+      voice_hostname            = local.workspace.voice_hostname
+      voice_webhook_port        = local.workspace.voice_webhook_port
+    })
+  }
 
   service_account {
     email  = google_service_account.openclaw.email

@@ -4,14 +4,18 @@ This single OpenTofu root creates a private Google Compute Engine VM for an
 OpenClaw agent. It follows the pinned-provider and workspace conventions from
 `lightning`, without splitting the deployment into ordered layers.
 
-The VM has no public IP. Cloud NAT provides outbound access, and the only
-ingress rule is SSH from Google IAP. OpenClaw listens on loopback with a
-randomly generated gateway token. The bootstrap installs:
+The VM has a static public IP so the agent can receive Twilio voice webhooks,
+but ingress is limited to SSH from Google IAP and the voice webhook port from
+Cloudflare's published IP ranges. The webhook hostname is proxied through
+Cloudflare (which terminates public TLS from Twilio), and the OpenClaw gateway
+itself listens on loopback with a randomly generated token. The bootstrap
+installs:
 
 - Ubuntu 26.04 LTS from the `ubuntu-2604-lts-amd64` image family
 - Node.js LTS `24.18.0`, verified against its published SHA-256 checksum
 - OpenClaw `2026.6.11`, configured for `openai/gpt-5.5`
 - The official `@openclaw/codex` app-server plugin/runtime `2026.6.11`
+- The official `@openclaw/voice-call` plugin `2026.6.11` for phone calls
 - The standalone `@openai/codex` CLI `0.144.1`
 - An always-on systemd gateway service under a dedicated `openclaw` user
 
@@ -22,6 +26,8 @@ randomly generated gateway token. The bootstrap installs:
   resources in this module
 - The same `cloudflare` AWS profile used by `lightning`, with access to its
   Cloudflare R2 bucket named `tofu`
+- `CLOUDFLARE_API_TOKEN` exported with DNS, Zone Settings, and Zone Rulesets
+  write access to the zone named in `workspace.tf` (`veronica-agent.com`)
 - Billing enabled on the target Google Cloud project
 
 ## Deploy
@@ -87,6 +93,44 @@ For an embedded local session that bypasses the gateway, run
 `sudo -iu openclaw openclaw chat`. Normal use should go through
 `openclaw tui`.
 
+## Phone calls (Twilio)
+
+The apply creates the Cloudflare side automatically: a proxied DNS record for
+`voice.veronica-agent.com` pointing at the VM, the zone's SSL mode set to
+`flexible`, and an origin rule routing that hostname to the plugin's webhook
+port. Twilio's webhook IPs are dynamic and unpublished, so the GCP firewall
+admits only Cloudflare's ranges and the plugin verifies each request's
+`X-Twilio-Signature` instead.
+
+1. Buy a voice-capable number in the [Twilio console](https://console.twilio.com/)
+   and set the number's "A call comes in" webhook to HTTP POST with the URL
+   from `tofu output -raw voice_webhook_url`.
+2. Add the Twilio credentials on the VM (they stay out of OpenTofu state,
+   like the OAuth logins). Edit `/home/openclaw/.openclaw/.env` as root and
+   append:
+
+   ```bash
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=your-auth-token
+   TWILIO_FROM_NUMBER=+1XXXXXXXXXX
+   ```
+
+   Also replace the placeholder `VOICE_ALLOW_FROM` value with the caller's
+   number in E.164 form; only allowlisted numbers can reach the agent.
+3. Restart the gateway and check the plugin's self-diagnosis:
+
+   ```bash
+   sudo systemctl restart openclaw-gateway
+   sudo -iu openclaw openclaw voicecall setup
+   ```
+
+4. Call the Twilio number from the allowlisted phone.
+
+Inbound calls use turn-based speech (Twilio transcribes, the agent replies via
+TTS). For lower-latency full-duplex conversation, enable `realtime` in the
+plugin config later; that requires an OpenAI or Gemini API key, which the
+ChatGPT device-code login does not provide.
+
 ## Open the dashboard
 
 In one local terminal, print and run the IAP-backed SSH tunnel command:
@@ -132,3 +176,10 @@ instance.
 - OS Login is enabled and project-wide SSH keys are blocked.
 - Anyone with root access to the VM can read the agent credentials and gateway
   token; keep IAP and OS Login grants narrow.
+- The voice webhook port accepts plain HTTP, but only from Cloudflare's
+  published IP ranges, and the plugin rejects requests whose host is not the
+  voice hostname or whose Twilio signature does not verify. The
+  Cloudflare-to-origin hop is unencrypted by design (`flexible` SSL); public
+  traffic from Twilio to Cloudflare is TLS.
+- The inbound allowlist is caller-ID filtering, not authentication; caller ID
+  can be spoofed, so do not treat the phone line as a trusted control channel.
