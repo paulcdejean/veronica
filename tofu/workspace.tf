@@ -1,6 +1,10 @@
 locals {
   workspace = local.workspaces[tofu.workspace]
 
+  # Derived from the DNS record resource so anything consuming the URL
+  # (the Twilio number, outputs) depends on the record actually existing.
+  voice_webhook_url = "https://${cloudflare_dns_record.voice.name}/voice/webhook"
+
   # This follows lightning's workspace-driven settings pattern while keeping
   # the entire deployment in one OpenTofu root module.
   workspaces = {
@@ -22,6 +26,7 @@ locals {
       voice_zone                = "veronica-agent.com"
       voice_hostname            = "voice.veronica-agent.com"
       voice_webhook_port        = 3334
+      voice_area_code           = "512"
     }
   }
 }

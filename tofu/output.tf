@@ -19,8 +19,13 @@ output "public_ip" {
 }
 
 output "voice_webhook_url" {
-  value       = "https://${local.workspace.voice_hostname}/voice/webhook"
-  description = "Set this as the Voice webhook (HTTP POST) on the Twilio phone number."
+  value       = local.voice_webhook_url
+  description = "The Voice webhook URL configured on the Twilio phone number."
+}
+
+output "twilio_phone_number" {
+  value       = twilio_api_accounts_incoming_phone_numbers.voice.phone_number
+  description = "The purchased number; use it as TWILIO_FROM_NUMBER on the VM and give it to allowed callers."
 }
 
 output "gateway_token_command" {

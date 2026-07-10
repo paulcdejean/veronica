@@ -28,6 +28,8 @@ installs:
   Cloudflare R2 bucket named `tofu`
 - `CLOUDFLARE_API_TOKEN` exported with DNS, Zone Settings, and Zone Rulesets
   write access to the zone named in `workspace.tf` (`veronica-agent.com`)
+- `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported (or `TWILIO_ACCOUNT_SID`
+  and `TWILIO_AUTH_TOKEN`) for a Twilio account able to purchase phone numbers
 - Billing enabled on the target Google Cloud project
 
 ## Deploy
@@ -95,36 +97,36 @@ For an embedded local session that bypasses the gateway, run
 
 ## Phone calls (Twilio)
 
-The apply creates the Cloudflare side automatically: a proxied DNS record for
-`voice.veronica-agent.com` pointing at the VM, the zone's SSL mode set to
-`flexible`, and an origin rule routing that hostname to the plugin's webhook
-port. Twilio's webhook IPs are dynamic and unpublished, so the GCP firewall
-admits only Cloudflare's ranges and the plugin verifies each request's
-`X-Twilio-Signature` instead.
+The apply provisions the whole call path. On the Twilio side it purchases a
+voice number (area code set in `workspace.tf`) and points its Voice webhook at
+the plugin; destroying that resource would release the number permanently, so
+it carries `prevent_destroy`. On the Cloudflare side it creates a proxied DNS
+record for `voice.veronica-agent.com` pointing at the VM, sets the zone's SSL
+mode to `flexible`, and adds an origin rule routing that hostname to the
+plugin's webhook port. Twilio's webhook IPs are dynamic and unpublished, so
+the GCP firewall admits only Cloudflare's ranges and the plugin verifies each
+request's `X-Twilio-Signature` instead.
 
-1. Buy a voice-capable number in the [Twilio console](https://console.twilio.com/)
-   and set the number's "A call comes in" webhook to HTTP POST with the URL
-   from `tofu output -raw voice_webhook_url`.
-2. Add the Twilio credentials on the VM (they stay out of OpenTofu state,
+1. Add the Twilio credentials on the VM (they stay out of OpenTofu state,
    like the OAuth logins). Edit `/home/openclaw/.openclaw/.env` as root and
-   append:
+   append, using `tofu output -raw twilio_phone_number` for the from-number:
 
    ```bash
    TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    TWILIO_AUTH_TOKEN=your-auth-token
-   TWILIO_FROM_NUMBER=+1XXXXXXXXXX
+   TWILIO_FROM_NUMBER=+1512XXXXXXX
    ```
 
    Also replace the placeholder `VOICE_ALLOW_FROM` value with the caller's
    number in E.164 form; only allowlisted numbers can reach the agent.
-3. Restart the gateway and check the plugin's self-diagnosis:
+2. Restart the gateway and check the plugin's self-diagnosis:
 
    ```bash
    sudo systemctl restart openclaw-gateway
    sudo -iu openclaw openclaw voicecall setup
    ```
 
-4. Call the Twilio number from the allowlisted phone.
+3. Call the Twilio number from the allowlisted phone.
 
 Inbound calls use turn-based speech (Twilio transcribes, the agent replies via
 TTS). For lower-latency full-duplex conversation, enable `realtime` in the

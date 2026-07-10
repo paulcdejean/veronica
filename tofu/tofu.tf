@@ -11,6 +11,11 @@ terraform {
       source  = "hashicorp/google"
       version = "7.39.0"
     }
+
+    twilio = {
+      source  = "twilio/twilio"
+      version = "0.18.46"
+    }
   }
 
   backend "s3" {
@@ -37,3 +42,7 @@ provider "google" {
 
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}
+
+# Reads TWILIO_API_KEY/TWILIO_API_SECRET from the environment, falling back
+# to TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN.
+provider "twilio" {}
