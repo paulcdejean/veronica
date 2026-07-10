@@ -27,6 +27,12 @@ resource "cloudflare_zone_setting" "voice_ssl" {
   zone_id    = data.cloudflare_zone.voice.id
   setting_id = "ssl"
   value      = "flexible"
+
+  # Zone settings cannot be deleted through the API; on removal, just forget
+  # the resource from state instead of attempting a destroy.
+  lifecycle {
+    destroy = false
+  }
 }
 
 # Flexible SSL connects to the origin on port 80; this rule reroutes the
