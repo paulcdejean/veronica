@@ -37,13 +37,17 @@ install -d -o openclaw -g openclaw -m 0700 \
   /home/openclaw/.openclaw/workspace \
   /home/openclaw/.codex
 
-install -d -o root -g openclaw -m 0750 /etc/openclaw
-if [ ! -s /etc/openclaw/gateway.env ]; then
-  umask 0027
-  printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >/etc/openclaw/gateway.env
-  chown root:openclaw /etc/openclaw/gateway.env
+if [ ! -s /home/openclaw/.openclaw/.env ]; then
+  if [ -s /etc/openclaw/gateway.env ]; then
+    install -o openclaw -g openclaw -m 0600 \
+      /etc/openclaw/gateway.env /home/openclaw/.openclaw/.env
+  else
+    umask 0077
+    printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" \
+      >/home/openclaw/.openclaw/.env
+    chown openclaw:openclaw /home/openclaw/.openclaw/.env
+  fi
 fi
-gateway_token="$(sed -n 's/^OPENCLAW_GATEWAY_TOKEN=//p' /etc/openclaw/gateway.env)"
 
 cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
 {
@@ -73,7 +77,6 @@ chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json
 chmod 0600 /home/openclaw/.openclaw/openclaw.json
 
 runuser --user openclaw -- env HOME=/home/openclaw \
-  OPENCLAW_GATEWAY_TOKEN="$${gateway_token}" \
   /usr/local/bin/openclaw plugins install \
   "npm:@openclaw/codex@${codex_plugin_version}" --force --pin
 
@@ -89,7 +92,7 @@ User=openclaw
 Group=openclaw
 Environment=HOME=/home/openclaw
 Environment=OPENCLAW_SERVICE_REPAIR_POLICY=external
-EnvironmentFile=/etc/openclaw/gateway.env
+EnvironmentFile=/home/openclaw/.openclaw/.env
 ExecStart=/usr/local/bin/openclaw gateway --port 18789
 Restart=always
 RestartSec=5

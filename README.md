@@ -66,6 +66,27 @@ The first login powers OpenClaw's native Codex app-server runtime through your
 ChatGPT/Codex subscription. The second makes the standalone `codex` command
 usable for direct terminal work on this VM.
 
+## Open the terminal UI
+
+After connecting to the VM over SSH, run the TUI as the `openclaw` service
+user so it uses the agent's configuration and credentials:
+
+```bash
+sudo -iu openclaw openclaw tui
+```
+
+The TUI connects to the local gateway and opens the default `main` session.
+Type a message and press Enter, use `/status` to inspect the connection, and
+press `Ctrl+C` to exit. Check the gateway if the TUI cannot connect:
+
+```bash
+sudo systemctl status openclaw-gateway --no-pager
+```
+
+For an embedded local session that bypasses the gateway, run
+`sudo -iu openclaw openclaw chat`. Normal use should go through
+`openclaw tui`.
+
 ## Open the dashboard
 
 In one local terminal, print and run the IAP-backed SSH tunnel command:
@@ -105,7 +126,8 @@ instance.
 
 - OAuth credentials live only in `/home/openclaw`, not in OpenTofu state.
 - The gateway token is generated on the VM and stored at
-  `/etc/openclaw/gateway.env` with restricted permissions.
+  `/home/openclaw/.openclaw/.env` with restricted permissions. OpenClaw loads
+  this global environment file for both CLI and systemd gateway use.
 - The VM service account receives no project IAM roles by default.
 - OS Login is enabled and project-wide SSH keys are blocked.
 - Anyone with root access to the VM can read the agent credentials and gateway
