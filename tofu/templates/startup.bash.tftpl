@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install --yes ca-certificates curl git jq openssl xz-utils
+
+node_archive="node-v${node_version}-linux-x64.tar.xz"
+node_dir="/usr/local/lib/node-v${node_version}-linux-x64"
+
+if [ ! -x "$${node_dir}/bin/node" ]; then
+  curl --fail --silent --show-error --location \
+    "https://nodejs.org/dist/v${node_version}/$${node_archive}" \
+    --output "/tmp/$${node_archive}"
+  printf '%s  %s\n' \
+    "${node_linux_x64_sha256}" "/tmp/$${node_archive}" \
+    | sha256sum --check --status
+  tar --extract --xz --file "/tmp/$${node_archive}" --directory /usr/local/lib
+fi
+
+ln --symbolic --force "$${node_dir}/bin/node" /usr/local/bin/node
+ln --symbolic --force "$${node_dir}/bin/npm" /usr/local/bin/npm
+ln --symbolic --force "$${node_dir}/bin/npx" /usr/local/bin/npx
+ln --symbolic --force "$${node_dir}/bin/corepack" /usr/local/bin/corepack
+
+npm install --global --prefix /usr/local \
+  "openclaw@${openclaw_version}" \
+  "@openai/codex@${codex_version}"
+
+if ! id openclaw >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash openclaw
+fi
+
+install -d -o openclaw -g openclaw -m 0700 \
+  /home/openclaw/.openclaw \
+  /home/openclaw/.openclaw/workspace \
+  /home/openclaw/.codex
+
+cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
+{
+  gateway: {
+    mode: "local",
+    port: 18789,
+    bind: "loopback",
+    auth: {
+      mode: "token",
+      token: "$${OPENCLAW_GATEWAY_TOKEN}",
+    },
+  },
+  plugins: {
+    entries: {
+      codex: { enabled: true },
+    },
+  },
+  agents: {
+    defaults: {
+      model: { primary: "openai/gpt-5.5" },
+      workspace: "/home/openclaw/.openclaw/workspace",
+    },
+  },
+}
+JSON
+chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json
+chmod 0600 /home/openclaw/.openclaw/openclaw.json
+
+install -d -o root -g openclaw -m 0750 /etc/openclaw
+if [ ! -s /etc/openclaw/gateway.env ]; then
+  umask 0027
+  printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >/etc/openclaw/gateway.env
+  chown root:openclaw /etc/openclaw/gateway.env
+fi
+
+cat >/etc/systemd/system/openclaw-gateway.service <<'UNIT'
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+Environment=OPENCLAW_SERVICE_REPAIR_POLICY=external
+EnvironmentFile=/etc/openclaw/gateway.env
+ExecStart=/usr/local/bin/openclaw gateway --port 18789
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=78
+TimeoutStartSec=30
+TimeoutStopSec=30
+SuccessExitStatus=0 143
+OOMPolicy=continue
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now openclaw-gateway.service
