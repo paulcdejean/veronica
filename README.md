@@ -128,9 +128,10 @@ sudo -iu openclaw openclaw models status
 ```
 
 To change machine sizing, region, package versions, or deletion protection,
-edit the `veronica` entry in `workspace.tf`. Package version changes update the
-startup-script metadata; restart the VM to rerun the bootstrap on an existing
-instance.
+edit the `veronica` entry in `workspace.tf`. Any change that alters the
+startup script (package versions included) recreates the VM for a clean
+first boot, which wipes `/home/openclaw` — redo the logins and caller
+allowlist from [SETUP.md](SETUP.md) afterwards.
 
 ## Security notes
 

@@ -1,3 +1,25 @@
+locals {
+  openclaw_startup_script = templatefile("${path.module}/templates/startup.bash.tftpl", {
+    node_version              = local.workspace.node_version
+    node_linux_x64_sha256     = local.workspace.node_linux_x64_sha256
+    openclaw_version          = local.workspace.openclaw_version
+    codex_plugin_version      = local.workspace.codex_plugin_version
+    codex_version             = local.workspace.codex_version
+    voice_call_plugin_version = local.workspace.voice_call_plugin_version
+    voice_hostname            = local.workspace.voice_hostname
+    voice_webhook_port        = local.workspace.voice_webhook_port
+    project_id                = local.workspace.project_id
+    voice_env_secret          = google_secret_manager_secret.voice_env.secret_id
+  })
+}
+
+# Any change to the startup script (or the values templated into it) rolls
+# the VM to a fresh boot instead of relying on an in-place metadata update
+# that an already-provisioned box would only pick up on reboot.
+resource "terraform_data" "openclaw_startup_script" {
+  triggers_replace = local.openclaw_startup_script
+}
+
 resource "google_compute_instance" "openclaw" {
   name         = "openclaw-${tofu.workspace}"
   zone         = local.workspace.zone
@@ -25,21 +47,7 @@ resource "google_compute_instance" "openclaw" {
   metadata = {
     enable-oslogin         = "TRUE"
     block-project-ssh-keys = "TRUE"
-
-    # As a metadata key (rather than metadata_startup_script) the script
-    # updates in place; reboot the VM to rerun the bootstrap.
-    startup-script = templatefile("${path.module}/templates/startup.bash.tftpl", {
-      node_version              = local.workspace.node_version
-      node_linux_x64_sha256     = local.workspace.node_linux_x64_sha256
-      openclaw_version          = local.workspace.openclaw_version
-      codex_plugin_version      = local.workspace.codex_plugin_version
-      codex_version             = local.workspace.codex_version
-      voice_call_plugin_version = local.workspace.voice_call_plugin_version
-      voice_hostname            = local.workspace.voice_hostname
-      voice_webhook_port        = local.workspace.voice_webhook_port
-      project_id                = local.workspace.project_id
-      voice_env_secret          = google_secret_manager_secret.voice_env.secret_id
-    })
+    startup-script         = local.openclaw_startup_script
   }
 
   service_account {
@@ -56,6 +64,10 @@ resource "google_compute_instance" "openclaw" {
   scheduling {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
+  }
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.openclaw_startup_script]
   }
 
   depends_on = [
