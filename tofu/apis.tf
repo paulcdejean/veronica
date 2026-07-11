@@ -3,6 +3,7 @@ locals {
     "compute.googleapis.com",
     "iap.googleapis.com",
     "secretmanager.googleapis.com",
+    "storage.googleapis.com",
   ])
 }
 

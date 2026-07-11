@@ -147,12 +147,27 @@ UNIT
 
 # The voice bridge answers Twilio ConversationRelay: it serves the signed
 # voice webhook and the relay WebSocket on the Cloudflare-fronted port, and
-# forwards caller turns to the gateway's OpenResponses endpoint. Shipped as
-# base64 so the JavaScript passes through templatefile untouched.
+# forwards caller turns to the gateway's OpenResponses endpoint. It is
+# downloaded from the bootstrap bucket and pinned to the checksum of the
+# file in the repo; retries cover first-boot IAM propagation on the bucket
+# binding, and a wrong or missing download aborts the bootstrap.
 install -d -m 0755 /opt/voice-bridge
-base64 --decode >/opt/voice-bridge/index.mjs <<'BRIDGE'
-${voice_bridge_b64}
-BRIDGE
+for bridge_attempt in 1 2 3 4 5 6; do
+  if metadata_token=$(curl --fail --silent --show-error \
+      --header 'Metadata-Flavor: Google' \
+      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
+      | jq --raw-output '.access_token') \
+    && curl --fail --silent --show-error \
+      --header "Authorization: Bearer $${metadata_token}" \
+      'https://storage.googleapis.com/storage/v1/b/${bootstrap_bucket}/o/${voice_bridge_object}?alt=media' \
+      --output /opt/voice-bridge/index.mjs; then
+    break
+  fi
+  echo "voice bridge download failed (attempt $${bridge_attempt}); retrying" >&2
+  sleep 10
+done
+printf '%s  %s\n' '${voice_bridge_sha256}' /opt/voice-bridge/index.mjs \
+  | sha256sum --check --status
 
 cat >/opt/voice-bridge/package.json <<'PKG'
 {

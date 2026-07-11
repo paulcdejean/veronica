@@ -9,7 +9,9 @@ locals {
     voice_hostname        = local.workspace.voice_hostname
     voice_webhook_port    = local.workspace.voice_webhook_port
     voice_greeting        = local.workspace.voice_greeting
-    voice_bridge_b64      = base64encode(file("${path.module}/files/voice-bridge.mjs"))
+    voice_bridge_sha256   = filesha256("${path.module}/files/voice-bridge.mjs")
+    bootstrap_bucket      = google_storage_bucket.bootstrap.name
+    voice_bridge_object   = google_storage_bucket_object.voice_bridge.name
     project_id            = local.workspace.project_id
     voice_env_secret      = google_secret_manager_secret.voice_env.secret_id
   })
@@ -80,8 +82,10 @@ resource "google_compute_instance" "openclaw" {
   depends_on = [
     google_compute_router_nat.openclaw,
     google_project_service.enabled["iap.googleapis.com"],
-    # The first boot reads the voice secret, so it must exist and be readable.
+    # The first boot reads the voice secret and downloads the voice bridge,
+    # so both must exist and be readable.
     google_secret_manager_secret_version.voice_env,
     google_secret_manager_secret_iam_member.voice_env_reader,
+    google_storage_bucket_iam_member.bootstrap_reader,
   ]
 }
