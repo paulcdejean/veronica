@@ -56,16 +56,26 @@ fi
 
 # Inject the Twilio credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
 # TWILIO_FROM_NUMBER) that OpenTofu placed in Secret Manager, replacing any
-# previous values so a rotated secret takes effect on reboot. A failed fetch
-# leaves the existing values so it cannot brick the boot.
-if metadata_token=$(curl --fail --silent --show-error \
-    --header 'Metadata-Flavor: Google' \
-    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
-    | jq --raw-output '.access_token') \
-  && voice_env=$(curl --fail --silent --show-error \
-    --header "Authorization: Bearer $${metadata_token}" \
-    'https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${voice_env_secret}/versions/latest:access' \
-    | jq --raw-output '.payload.data' | base64 --decode); then
+# previous values so a rotated secret takes effect on reboot. Retries cover
+# first-boot IAM propagation on the secret binding; a failed fetch leaves
+# the existing values so it cannot brick the boot.
+voice_env=''
+for voice_env_attempt in 1 2 3 4 5 6; do
+  if metadata_token=$(curl --fail --silent --show-error \
+      --header 'Metadata-Flavor: Google' \
+      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
+      | jq --raw-output '.access_token') \
+    && voice_env=$(curl --fail --silent --show-error \
+      --header "Authorization: Bearer $${metadata_token}" \
+      'https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${voice_env_secret}/versions/latest:access' \
+      | jq --raw-output '.payload.data' | base64 --decode); then
+    break
+  fi
+  voice_env=''
+  echo "voice env secret fetch failed (attempt $${voice_env_attempt}); retrying" >&2
+  sleep 10
+done
+if [ -n "$${voice_env}" ]; then
   while IFS= read -r voice_env_line; do
     [ -n "$${voice_env_line}" ] || continue
     sed -i "/^$${voice_env_line%%=*}=/d" /home/openclaw/.openclaw/.env
@@ -74,6 +84,16 @@ if metadata_token=$(curl --fail --silent --show-error \
 else
   echo 'voice env secret unavailable; keeping existing values' >&2
 fi
+
+# Install the plugins before writing the config that references them, so
+# neither install run warns about the other plugin being missing.
+runuser --user openclaw -- env HOME=/home/openclaw \
+  /usr/local/bin/openclaw plugins install \
+  "npm:@openclaw/codex@${codex_plugin_version}" --force --pin
+
+runuser --user openclaw -- env HOME=/home/openclaw \
+  /usr/local/bin/openclaw plugins install \
+  "npm:@openclaw/voice-call@${voice_call_plugin_version}" --force --pin
 
 cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
 {
@@ -120,14 +140,6 @@ JSON
 chown openclaw:openclaw /home/openclaw/.openclaw/openclaw.json
 chmod 0600 /home/openclaw/.openclaw/openclaw.json
 
-runuser --user openclaw -- env HOME=/home/openclaw \
-  /usr/local/bin/openclaw plugins install \
-  "npm:@openclaw/codex@${codex_plugin_version}" --force --pin
-
-runuser --user openclaw -- env HOME=/home/openclaw \
-  /usr/local/bin/openclaw plugins install \
-  "npm:@openclaw/voice-call@${voice_call_plugin_version}" --force --pin
-
 cat >/etc/systemd/system/openclaw-gateway.service <<'UNIT'
 [Unit]
 Description=OpenClaw Gateway
@@ -156,4 +168,7 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now openclaw-gateway.service
+systemctl enable openclaw-gateway.service
+# Restart rather than start: on reboots the gateway comes up in parallel with
+# this script and would otherwise keep the pre-injection environment.
+systemctl restart openclaw-gateway.service
