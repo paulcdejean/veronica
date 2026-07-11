@@ -16,6 +16,14 @@ data "http" "twilio_account" {
       condition     = self.status_code == 200
       error_message = "Reading the Twilio account failed; check the twilio_rest_* variables."
     }
+
+    # Twilio redacts auth_token to an empty string (still HTTP 200) when the
+    # caller is not permitted to read it, which would silently place an empty
+    # credential in Secret Manager.
+    postcondition {
+      condition     = length(try(jsondecode(self.response_body).auth_token, "")) > 0
+      error_message = "The Account response has no auth token; the twilio_rest_* credential cannot read it. Use credentials permitted to view the auth token."
+    }
   }
 }
 

@@ -32,8 +32,10 @@ installs:
 - `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported (or `TWILIO_ACCOUNT_SID`
   and `TWILIO_AUTH_TOKEN`) for a Twilio account able to purchase phone numbers
 - `TF_VAR_twilio_rest_username` and `TF_VAR_twilio_rest_password` exported for
-  reading the account's auth token; a restricted API key scoped to account
-  reads is enough, or reuse the same values as above
+  reading the account's auth token. The credential must be permitted to view
+  the auth token — Twilio redacts it to an empty string for keys that are
+  not, which the plan rejects. The account SID and auth token themselves
+  always work
 - Billing enabled on the target Google Cloud project
 
 ## Deploy
