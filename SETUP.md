@@ -10,12 +10,24 @@ the VM as your SSH user.
 local$ tofu output -raw ssh_command
 ```
 
-Run the printed `gcloud compute ssh` command, then wait for cloud-init to
-finish installing Node, OpenClaw, and the plugins:
+Run the printed `gcloud compute ssh` command, then wait for the bootstrap to
+finish installing Node, OpenClaw, and the plugins. The startup script runs
+under `google-startup-scripts.service` (the guest agent, not cloud-init, so
+`cloud-init status` reports done while the install is still running); this
+blocks until every boot job, the bootstrap included, has finished:
 
 ```bash
-sudo cloud-init status --wait
+systemctl is-system-running --wait
 ```
+
+Then confirm the gateway came up:
+
+```bash
+sudo systemctl status openclaw-gateway --no-pager
+```
+
+To watch the bootstrap in progress instead, follow its log with
+`sudo journalctl -fu google-startup-scripts.service`.
 
 ## 2. Connect the OpenAI account
 
