@@ -1,8 +1,9 @@
 # OpenClaw on Google Cloud
 
-This single OpenTofu root creates a private Google Compute Engine VM for an
-OpenClaw agent. It follows the pinned-provider and workspace conventions from
-`lightning`, without splitting the deployment into ordered layers.
+This single OpenTofu root creates a Google Compute Engine VM for an OpenClaw
+agent reachable by phone. It follows the pinned-provider and workspace
+conventions from `lightning`, without splitting the deployment into ordered
+layers.
 
 The VM has a static public IP so the agent can receive Twilio voice webhooks,
 but ingress is limited to SSH from Google IAP and the voice webhook port from
@@ -30,6 +31,9 @@ installs:
   write access to the zone named in `workspace.tf` (`veronica-agent.com`)
 - `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported (or `TWILIO_ACCOUNT_SID`
   and `TWILIO_AUTH_TOKEN`) for a Twilio account able to purchase phone numbers
+- `TF_VAR_twilio_rest_username` and `TF_VAR_twilio_rest_password` exported for
+  reading the account's auth token; a restricted API key scoped to account
+  reads is enough, or reuse the same values as above
 - Billing enabled on the target Google Cloud project
 
 ## Deploy
@@ -45,34 +49,12 @@ If `veronica` already exists, select it with `tofu workspace select veronica`.
 The project is selected in `workspace.tf`, and the authenticated Google caller
 is granted IAP tunneling, OS Login, and service-account use.
 
-Print the SSH command and run it, then wait for cloud-init on the VM before
-onboarding:
+## Onboard the agent
 
-```bash
-tofu output -raw ssh_command
-# Run the printed command, then on the VM:
-sudo cloud-init status --wait
-```
-
-## Connect the OpenAI account
-
-OpenClaw and the standalone Codex CLI keep separate credential stores. Run both
-device-code logins as the service user; neither credential is placed in
-OpenTofu variables, metadata, or state:
-
-```bash
-tofu output -raw ssh_command
-# Run the printed command, then on the VM:
-sudo -iu openclaw openclaw models auth login --provider openai --device-code
-sudo -iu openclaw codex login --device-auth
-sudo systemctl restart openclaw-gateway
-sudo -iu openclaw openclaw models list --provider openai
-sudo -iu openclaw codex login status
-```
-
-The first login powers OpenClaw's native Codex app-server runtime through your
-ChatGPT/Codex subscription. The second makes the standalone `codex` command
-usable for direct terminal work on this VM.
+After a successful apply, follow [SETUP.md](SETUP.md) step by step: it covers
+the OpenAI device-code logins, the Twilio credentials on the VM, and
+verification through to a working phone call. No credential is ever placed in
+OpenTofu variables, metadata, or state.
 
 ## Open the terminal UI
 
@@ -107,26 +89,8 @@ plugin's webhook port. Twilio's webhook IPs are dynamic and unpublished, so
 the GCP firewall admits only Cloudflare's ranges and the plugin verifies each
 request's `X-Twilio-Signature` instead.
 
-1. Add the Twilio credentials on the VM (they stay out of OpenTofu state,
-   like the OAuth logins). Edit `/home/openclaw/.openclaw/.env` as root and
-   append, using `tofu output -raw twilio_phone_number` for the from-number:
-
-   ```bash
-   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   TWILIO_AUTH_TOKEN=your-auth-token
-   TWILIO_FROM_NUMBER=+1512XXXXXXX
-   ```
-
-   Also replace the placeholder `VOICE_ALLOW_FROM` value with the caller's
-   number in E.164 form; only allowlisted numbers can reach the agent.
-2. Restart the gateway and check the plugin's self-diagnosis:
-
-   ```bash
-   sudo systemctl restart openclaw-gateway
-   sudo -iu openclaw openclaw voicecall setup
-   ```
-
-3. Call the Twilio number from the allowlisted phone.
+The remaining on-VM configuration (Twilio credentials, caller allowlist,
+verification) is covered in [SETUP.md](SETUP.md).
 
 Inbound calls use turn-based speech (Twilio transcribes, the agent replies via
 TTS). For lower-latency full-duplex conversation, enable `realtime` in the
@@ -171,6 +135,11 @@ instance.
 ## Security notes
 
 - OAuth credentials live only in `/home/openclaw`, not in OpenTofu state.
+- The Twilio auth token is the one credential OpenTofu handles: it is read
+  from the Account API at plan time, stored in remote state and in Secret
+  Manager, and injected into the VM's env file at boot. Only the VM service
+  account can access the secret. To rotate, create and promote a secondary
+  auth token in Twilio, then apply and reboot the VM.
 - The gateway token is generated on the VM and stored at
   `/home/openclaw/.openclaw/.env` with restricted permissions. OpenClaw loads
   this global environment file for both CLI and systemd gateway use.

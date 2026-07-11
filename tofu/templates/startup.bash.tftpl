@@ -49,11 +49,30 @@ if [ ! -s /home/openclaw/.openclaw/.env ]; then
   fi
 fi
 
-# Placeholder until a real caller number is configured; Twilio credentials
-# (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER) are read from
-# this file by the voice-call plugin and are never written by the bootstrap.
+# Placeholder until a real caller number is configured.
 if ! grep -q '^VOICE_ALLOW_FROM=' /home/openclaw/.openclaw/.env; then
   printf 'VOICE_ALLOW_FROM=+15005550006\n' >>/home/openclaw/.openclaw/.env
+fi
+
+# Inject the Twilio credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+# TWILIO_FROM_NUMBER) that OpenTofu placed in Secret Manager, replacing any
+# previous values so a rotated secret takes effect on reboot. A failed fetch
+# leaves the existing values so it cannot brick the boot.
+if metadata_token=$(curl --fail --silent --show-error \
+    --header 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
+    | jq --raw-output '.access_token') \
+  && voice_env=$(curl --fail --silent --show-error \
+    --header "Authorization: Bearer $${metadata_token}" \
+    'https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${voice_env_secret}/versions/latest:access' \
+    | jq --raw-output '.payload.data' | base64 --decode); then
+  while IFS= read -r voice_env_line; do
+    [ -n "$${voice_env_line}" ] || continue
+    sed -i "/^$${voice_env_line%%=*}=/d" /home/openclaw/.openclaw/.env
+    printf '%s\n' "$${voice_env_line}" >>/home/openclaw/.openclaw/.env
+  done <<<"$${voice_env}"
+else
+  echo 'voice env secret unavailable; keeping existing values' >&2
 fi
 
 cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'

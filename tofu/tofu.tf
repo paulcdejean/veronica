@@ -12,6 +12,11 @@ terraform {
       version = "7.39.0"
     }
 
+    http = {
+      source  = "hashicorp/http"
+      version = "3.6.0"
+    }
+
     twilio = {
       source  = "twilio/twilio"
       version = "0.18.46"

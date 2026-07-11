@@ -2,6 +2,7 @@ locals {
   google_project_services = toset([
     "compute.googleapis.com",
     "iap.googleapis.com",
+    "secretmanager.googleapis.com",
   ])
 }
 
