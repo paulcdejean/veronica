@@ -67,7 +67,12 @@ resource "google_compute_instance" "openclaw" {
   }
 
   lifecycle {
-    replace_triggered_by = [terraform_data.openclaw_startup_script]
+    replace_triggered_by = [
+      terraform_data.openclaw_startup_script,
+      # The secret is only read at boot, so a rotated payload (new version
+      # resource) must roll the box to take effect.
+      google_secret_manager_secret_version.voice_env,
+    ]
   }
 
   depends_on = [
