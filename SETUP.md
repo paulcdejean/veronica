@@ -66,10 +66,10 @@ sudo systemctl restart voice-bridge
 sudo systemctl status voice-bridge --no-pager
 ```
 
-Then confirm the webhook is reachable through Cloudflare from your machine:
+Then confirm the webhook is reachable through Cloudflare:
 
 ```bash
-local$ curl -s -o /dev/null -w '%{http_code}\n' https://voice.veronica-agent.com/voice/webhook
+curl -s -o /dev/null -w '%{http_code}\n' https://voice.veronica-agent.com/voice/webhook
 ```
 
 `405` is the expected answer for a bare GET; a timeout or a `52x` Cloudflare
