@@ -16,9 +16,10 @@ installs:
 - Node.js LTS `24.18.0`, verified against its published SHA-256 checksum
 - OpenClaw `2026.6.11`, configured for `openai/gpt-5.5`
 - The official `@openclaw/codex` app-server plugin/runtime `2026.6.11`
-- The official `@openclaw/voice-call` plugin `2026.6.11` for phone calls
 - The standalone `@openai/codex` CLI `0.144.1`
 - An always-on systemd gateway service under a dedicated `openclaw` user
+- A small voice bridge service (`tofu/files/voice-bridge.mjs`) that connects
+  Twilio ConversationRelay to the gateway for phone calls
 
 ## Prerequisites
 
@@ -83,21 +84,27 @@ For an embedded local session that bypasses the gateway, run
 
 The apply provisions the whole call path. On the Twilio side it purchases a
 voice number (area code set in `workspace.tf`) and points its Voice webhook at
-the plugin; destroying that resource would release the number permanently, so
-it carries `prevent_destroy`. On the Cloudflare side it creates a proxied DNS
+the VM; destroying that resource would release the number permanently, so it
+carries `prevent_destroy`. On the Cloudflare side it creates a proxied DNS
 record for `voice.veronica-agent.com` pointing at the VM, sets the zone's SSL
 mode to `flexible`, and adds an origin rule routing that hostname to the
-plugin's webhook port. Twilio's webhook IPs are dynamic and unpublished, so
-the GCP firewall admits only Cloudflare's ranges and the plugin verifies each
+bridge's port. Twilio's webhook IPs are dynamic and unpublished, so the GCP
+firewall admits only Cloudflare's ranges and the bridge verifies each
 request's `X-Twilio-Signature` instead.
 
-The remaining on-VM configuration (Twilio credentials, caller allowlist,
-verification) is covered in [SETUP.md](SETUP.md).
+Calls run on [Twilio ConversationRelay](https://www.twilio.com/docs/voice/conversationrelay):
+Twilio answers the call, speaks the greeting, and performs all speech-to-text
+and text-to-speech on its side, billed per minute to the same Twilio account.
+The `voice-bridge` systemd service on the VM answers the voice webhook with
+`<Connect><ConversationRelay>` TwiML, receives each transcribed caller turn
+over a WebSocket, forwards it to the gateway's OpenResponses endpoint on
+loopback (one persistent agent session per caller number), and streams the
+reply text back for synthesis, so speech starts before the agent has finished
+composing. No speech vendor or API key beyond Twilio is involved; agent
+reasoning stays on the ChatGPT login.
 
-Inbound calls use turn-based speech (Twilio transcribes, the agent replies via
-TTS). For lower-latency full-duplex conversation, enable `realtime` in the
-plugin config later; that requires an OpenAI or Gemini API key, which the
-ChatGPT device-code login does not provide.
+The remaining on-VM configuration (caller allowlist, verification) is covered
+in [SETUP.md](SETUP.md).
 
 ## Open the dashboard
 
@@ -123,8 +130,9 @@ exposed directly to the internet.
 tofu output -raw ssh_command
 
 # Then run on the VM:
-sudo systemctl status openclaw-gateway --no-pager
+sudo systemctl status openclaw-gateway voice-bridge --no-pager
 sudo journalctl -u openclaw-gateway -n 200 --no-pager
+sudo journalctl -u voice-bridge -n 200 --no-pager
 sudo -iu openclaw openclaw doctor
 sudo -iu openclaw openclaw models status
 ```
@@ -151,10 +159,13 @@ allowlist from [SETUP.md](SETUP.md) afterwards.
 - OS Login is enabled and project-wide SSH keys are blocked.
 - Anyone with root access to the VM can read the agent credentials and gateway
   token; keep IAP and OS Login grants narrow.
-- The voice webhook port accepts plain HTTP, but only from Cloudflare's
-  published IP ranges, and the plugin rejects requests whose host is not the
+- The voice bridge port accepts plain HTTP, but only from Cloudflare's
+  published IP ranges, and the bridge rejects requests whose host is not the
   voice hostname or whose Twilio signature does not verify. The
-  Cloudflare-to-origin hop is unencrypted by design (`flexible` SSL); public
-  traffic from Twilio to Cloudflare is TLS.
+  ConversationRelay WebSocket handshake carries no Twilio signature, so the
+  bridge only accepts sessions presenting a single-use nonce it minted while
+  answering a signed webhook moments earlier. The Cloudflare-to-origin hop is
+  unencrypted by design (`flexible` SSL); public traffic from Twilio to
+  Cloudflare is TLS.
 - The inbound allowlist is caller-ID filtering, not authentication; caller ID
   can be spoofed, so do not treat the phone line as a trusted control channel.

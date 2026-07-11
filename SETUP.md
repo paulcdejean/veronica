@@ -11,19 +11,19 @@ local$ tofu output -raw ssh_command
 ```
 
 Run the printed `gcloud compute ssh` command, then wait for the bootstrap to
-finish installing Node, OpenClaw, and the plugins. The startup script runs
-under `google-startup-scripts.service` (the guest agent, not cloud-init, so
-`cloud-init status` reports done while the install is still running); this
+finish installing Node, OpenClaw, and the voice bridge. The startup script
+runs under `google-startup-scripts.service` (the guest agent, not cloud-init,
+so `cloud-init status` reports done while the install is still running); this
 blocks until every boot job, the bootstrap included, has finished:
 
 ```bash
 systemctl is-system-running --wait
 ```
 
-Then confirm the gateway came up:
+Then confirm the gateway and the voice bridge came up:
 
 ```bash
-sudo systemctl status openclaw-gateway --no-pager
+sudo systemctl status openclaw-gateway voice-bridge --no-pager
 ```
 
 To watch the bootstrap in progress instead, follow its log with
@@ -54,38 +54,41 @@ Manager, so leave the `TWILIO_*` lines alone (edits to them are overwritten).
 The one value the apply cannot know is who may call. On the VM, edit
 `/home/openclaw/.openclaw/.env` as root and replace the placeholder
 `VOICE_ALLOW_FROM` value with the caller's number in E.164 form (for example
-`VOICE_ALLOW_FROM=+15125551234`). Only allowlisted numbers can reach the
-agent.
+`VOICE_ALLOW_FROM=+15125551234`; separate multiple numbers with commas). Only
+allowlisted numbers can reach the agent.
 
-## 4. Restart the gateway and verify
+## 4. Restart the voice bridge and verify
+
+The bridge reads the allowlist and credentials from that env file at start:
 
 ```bash
-sudo systemctl restart openclaw-gateway
-sudo -iu openclaw openclaw voicecall setup
+sudo systemctl restart voice-bridge
+sudo systemctl status voice-bridge --no-pager
 ```
 
-Every check in the setup report should pass. Then confirm the webhook is
-reachable through Cloudflare from your machine:
+Then confirm the webhook is reachable through Cloudflare from your machine:
 
 ```bash
 local$ curl -s -o /dev/null -w '%{http_code}\n' https://voice.veronica-agent.com/voice/webhook
 ```
 
-Any HTTP status (typically `405` for a bare GET) means the path works; a
-timeout or a `52x` Cloudflare error means the plugin is not listening or the
-firewall is not admitting Cloudflare.
+`405` is the expected answer for a bare GET; a timeout or a `52x` Cloudflare
+error means the bridge is not listening or the firewall is not admitting
+Cloudflare.
 
 ## 5. Call the number
 
-Call the Twilio number from the allowlisted phone. The agent answers,
-transcribes what you say, and replies by voice; hang up to end the session.
+Call the Twilio number from the allowlisted phone. Twilio answers and speaks
+the greeting immediately, transcribes what you say, and the agent replies by
+voice; hang up to end the call. Each caller number keeps one continuous agent
+session across calls.
 
 If the call does not connect, check in order:
 
 ```bash
-sudo journalctl -u openclaw-gateway -n 100 --no-pager   # plugin/webhook errors
-sudo ss -tlnp | grep 3334                               # webhook server listening
-sudo -iu openclaw openclaw voicecall setup              # config self-diagnosis
+sudo journalctl -u voice-bridge -n 100 --no-pager       # webhook/relay errors
+sudo journalctl -u openclaw-gateway -n 100 --no-pager   # agent errors
+sudo ss -tlnp | grep 3334                               # bridge listening
 ```
 
 and the call log in the Twilio console, which shows the exact webhook

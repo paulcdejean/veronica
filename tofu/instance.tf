@@ -1,15 +1,17 @@
 locals {
   openclaw_startup_script = templatefile("${path.module}/templates/startup.bash.tftpl", {
-    node_version              = local.workspace.node_version
-    node_linux_x64_sha256     = local.workspace.node_linux_x64_sha256
-    openclaw_version          = local.workspace.openclaw_version
-    codex_plugin_version      = local.workspace.codex_plugin_version
-    codex_version             = local.workspace.codex_version
-    voice_call_plugin_version = local.workspace.voice_call_plugin_version
-    voice_hostname            = local.workspace.voice_hostname
-    voice_webhook_port        = local.workspace.voice_webhook_port
-    project_id                = local.workspace.project_id
-    voice_env_secret          = google_secret_manager_secret.voice_env.secret_id
+    node_version          = local.workspace.node_version
+    node_linux_x64_sha256 = local.workspace.node_linux_x64_sha256
+    openclaw_version      = local.workspace.openclaw_version
+    codex_plugin_version  = local.workspace.codex_plugin_version
+    codex_version         = local.workspace.codex_version
+    ws_version            = local.workspace.ws_version
+    voice_hostname        = local.workspace.voice_hostname
+    voice_webhook_port    = local.workspace.voice_webhook_port
+    voice_greeting        = local.workspace.voice_greeting
+    voice_bridge_b64      = base64encode(file("${path.module}/files/voice-bridge.mjs"))
+    project_id            = local.workspace.project_id
+    voice_env_secret      = google_secret_manager_secret.voice_env.secret_id
   })
 }
 
