@@ -42,9 +42,12 @@ if [ ! -s /home/openclaw/.openclaw/.env ]; then
     install -o openclaw -g openclaw -m 0600 \
       /etc/openclaw/gateway.env /home/openclaw/.openclaw/.env
   else
-    umask 0077
-    printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" \
-      >/home/openclaw/.openclaw/.env
+    # Subshell so the tightened umask cannot leak into the rest of the boot.
+    (
+      umask 0077
+      printf 'OPENCLAW_GATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" \
+        >/home/openclaw/.openclaw/.env
+    )
     chown openclaw:openclaw /home/openclaw/.openclaw/.env
   fi
 fi
@@ -181,6 +184,10 @@ cat >/opt/voice-bridge/package.json <<'PKG'
 PKG
 
 npm install --prefix /opt/voice-bridge --omit=dev --no-audit --no-fund
+
+# The bridge runs as the unprivileged openclaw user; make sure everything
+# under /opt/voice-bridge is world-readable regardless of the boot umask.
+chmod --recursive go+rX /opt/voice-bridge
 
 cat >/etc/systemd/system/voice-bridge.service <<'UNIT'
 [Unit]
