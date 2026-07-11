@@ -1,9 +1,12 @@
 # OpenClaw on Google Cloud
 
-This single OpenTofu root creates a Google Compute Engine VM for an OpenClaw
-agent reachable by phone. It follows the pinned-provider and workspace
-conventions from `lightning`, without splitting the deployment into ordered
-layers.
+This repo creates a Google Compute Engine VM for an OpenClaw agent reachable
+by phone. It follows the pinned-provider, workspace, and ordered-layer
+conventions from `lightning`, in two layers: `00_contacts` owns the caller
+directory (one `voice-contact-*` project metadata entry per name in
+`allowed_callers.txt`, with the phone numbers typed into the Compute Engine
+metadata page so they never enter the repo), and `tofu` is the main layer
+with everything else.
 
 The VM has a static public IP so the agent can receive Twilio voice webhooks,
 but ingress is limited to SSH from Google IAP and the voice webhook port from
@@ -41,14 +44,32 @@ installs:
 
 ## Deploy
 
+The contacts layer comes first (in each layer, if the `veronica` workspace
+already exists, select it with `tofu workspace select veronica` instead):
+
 ```bash
-cd tofu
+cd 00_contacts
 tofu init
 tofu workspace new veronica
 tofu apply
 ```
 
-If `veronica` already exists, select it with `tofu workspace select veronica`.
+Add each allowed caller's name to `allowed_callers.txt` at the repo root
+(one name per line — the source of truth for both layers); the apply creates
+one empty `voice-contact-*` project metadata entry per name. Then open the
+printed `contacts_console_url` output and fill in each caller's phone number
+(E.164, for example `+15125551234`) — the main layer's plan fails until at
+least one number is filled in.
+
+Then the main layer:
+
+```bash
+cd ../tofu
+tofu init
+tofu workspace new veronica
+tofu apply
+```
+
 The project is selected in `workspace.tf`, and the authenticated Google caller
 is granted IAP tunneling, OS Login, and service-account use.
 
@@ -103,8 +124,15 @@ reply text back for synthesis, so speech starts before the agent has finished
 composing. No speech vendor or API key beyond Twilio is involved; agent
 reasoning stays on the ChatGPT login.
 
-The remaining on-VM configuration (caller allowlist, verification) is covered
-in [SETUP.md](SETUP.md).
+Who may call is decided by the contacts directory: every name in
+`allowed_callers.txt` whose `voice-contact-*` metadata entry has a phone
+number filled in is allowlisted. The main layer resolves the directory at
+plan time (inspect it with the `voice_contact_numbers` output), writes the
+numbers to the voice-allowlist secret, and the VM injects `VOICE_ALLOW_FROM`
+from it on every boot. To change callers: edit the metadata page (and
+`allowed_callers.txt` + `tofu apply` in `00_contacts` if the name is new),
+apply the main layer to refresh the secret, and reboot the VM — no
+replacement, no login loss.
 
 ## Open the dashboard
 
@@ -140,8 +168,9 @@ sudo -iu openclaw openclaw models status
 To change machine sizing, region, package versions, or deletion protection,
 edit the `veronica` entry in `workspace.tf`. Any change that alters the
 startup script (package versions included) recreates the VM for a clean
-first boot, which wipes `/home/openclaw` — redo the logins and caller
-allowlist from [SETUP.md](SETUP.md) afterwards.
+first boot, which wipes `/home/openclaw` — redo the logins from
+[SETUP.md](SETUP.md) afterwards (the caller allowlist restores itself from
+the contacts directory at boot).
 
 ## Security notes
 
@@ -167,5 +196,9 @@ allowlist from [SETUP.md](SETUP.md) afterwards.
   answering a signed webhook moments earlier. The Cloudflare-to-origin hop is
   unencrypted by design (`flexible` SSL); public traffic from Twilio to
   Cloudflare is TLS.
+- The callers' phone numbers live in project metadata (readable by anything
+  in the project with compute read access) and, once resolved, in remote
+  state and Secret Manager — never in the repo, which carries only their
+  names.
 - The inbound allowlist is caller-ID filtering, not authentication; caller ID
   can be spoofed, so do not treat the phone line as a trusted control channel.

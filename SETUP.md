@@ -46,27 +46,28 @@ sudo -iu openclaw openclaw models list --provider openai
 sudo -iu openclaw codex login status
 ```
 
-## 3. Set the caller allowlist
+## 3. Caller allowlist — nothing to do
 
-The Twilio credentials and from-number are injected into
+Both the Twilio credentials and the caller allowlist are injected into
 `/home/openclaw/.openclaw/.env` automatically on every boot from Secret
-Manager, so leave the `TWILIO_*` lines alone (edits to them are overwritten).
-The one value the apply cannot know is who may call. On the VM, edit
-`/home/openclaw/.openclaw/.env` as root and replace the placeholder
-`VOICE_ALLOW_FROM` value with the caller's number in E.164 form (for example
-`VOICE_ALLOW_FROM=+15125551234`; separate multiple numbers with commas). Only
-allowlisted numbers can reach the agent.
+Manager, so leave the `TWILIO_*` and `VOICE_ALLOW_FROM` lines alone (edits
+are overwritten). The allowlist comes from the contacts directory: names in
+`allowed_callers.txt` at the repo root, numbers typed into the Compute
+Engine metadata page (`tofu output -raw contacts_console_url` in
+`00_contacts/`).
 
-## 4. Restart the voice bridge and verify
+To change callers later: update the metadata page (and apply `00_contacts`
+if a name was added or removed), run `tofu apply` in `tofu/` to refresh the
+allowlist secret, and reboot the VM with `sudo reboot` — the boot re-injects
+the env file and restarts the services. No VM replacement, no redoing logins.
 
-The bridge reads the allowlist and credentials from that env file at start:
+## 4. Verify the webhook
 
 ```bash
-sudo systemctl restart voice-bridge
 sudo systemctl status voice-bridge --no-pager
 ```
 
-Then confirm the webhook is reachable through Cloudflare:
+Then confirm it is reachable through Cloudflare:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://voice.veronica-agent.com/voice/webhook

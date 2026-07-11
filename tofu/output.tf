@@ -28,6 +28,11 @@ output "twilio_phone_number" {
   description = "The purchased number; use it as TWILIO_FROM_NUMBER on the VM and give it to allowed callers."
 }
 
+output "voice_contact_numbers" {
+  value       = local.voice_contacts
+  description = "The resolved caller allowlist: every contacts-KV name whose number is filled in."
+}
+
 output "gateway_token_command" {
   value       = "gcloud compute ssh ${google_compute_instance.openclaw.name} --project=${local.workspace.project_id} --zone=${google_compute_instance.openclaw.zone} --tunnel-through-iap --command='sudo sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /home/openclaw/.openclaw/.env'"
   description = "Run this command locally to read the generated dashboard token."

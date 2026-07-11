@@ -52,41 +52,45 @@ if [ ! -s /home/openclaw/.openclaw/.env ]; then
   fi
 fi
 
-# Placeholder until a real caller number is configured.
+# Deny-all placeholder (a Twilio test number no caller ID can match) in case
+# the allowlist secret fetch below fails on this boot; a successful fetch
+# overwrites it.
 if ! grep -q '^VOICE_ALLOW_FROM=' /home/openclaw/.openclaw/.env; then
   printf 'VOICE_ALLOW_FROM=+15005550006\n' >>/home/openclaw/.openclaw/.env
 fi
 
-# Inject the Twilio credentials (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
-# TWILIO_FROM_NUMBER) that OpenTofu placed in Secret Manager, replacing any
-# previous values so a rotated secret takes effect on reboot. Retries cover
-# first-boot IAM propagation on the secret binding; a failed fetch leaves
-# the existing values so it cannot brick the boot.
-voice_env=''
-for voice_env_attempt in 1 2 3 4 5 6; do
-  if metadata_token=$(curl --fail --silent --show-error \
-      --header 'Metadata-Flavor: Google' \
-      'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
-      | jq --raw-output '.access_token') \
-    && voice_env=$(curl --fail --silent --show-error \
-      --header "Authorization: Bearer $${metadata_token}" \
-      'https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${voice_env_secret}/versions/latest:access' \
-      | jq --raw-output '.payload.data' | base64 --decode); then
-    break
-  fi
+# Inject the env lines that OpenTofu placed in Secret Manager (the Twilio
+# credentials in one secret, the caller allowlist in the other), replacing
+# any previous values so a rotated payload takes effect on reboot. Retries
+# cover first-boot IAM propagation on the secret bindings; a failed fetch
+# leaves the existing values so it cannot brick the boot.
+for voice_secret in '${voice_env_secret}' '${voice_allowlist_secret}'; do
   voice_env=''
-  echo "voice env secret fetch failed (attempt $${voice_env_attempt}); retrying" >&2
-  sleep 10
+  for voice_env_attempt in 1 2 3 4 5 6; do
+    if metadata_token=$(curl --fail --silent --show-error \
+        --header 'Metadata-Flavor: Google' \
+        'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
+        | jq --raw-output '.access_token') \
+      && voice_env=$(curl --fail --silent --show-error \
+        --header "Authorization: Bearer $${metadata_token}" \
+        "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/$${voice_secret}/versions/latest:access" \
+        | jq --raw-output '.payload.data' | base64 --decode); then
+      break
+    fi
+    voice_env=''
+    echo "secret $${voice_secret} fetch failed (attempt $${voice_env_attempt}); retrying" >&2
+    sleep 10
+  done
+  if [ -n "$${voice_env}" ]; then
+    while IFS= read -r voice_env_line; do
+      [ -n "$${voice_env_line}" ] || continue
+      sed -i "/^$${voice_env_line%%=*}=/d" /home/openclaw/.openclaw/.env
+      printf '%s\n' "$${voice_env_line}" >>/home/openclaw/.openclaw/.env
+    done <<<"$${voice_env}"
+  else
+    echo "secret $${voice_secret} unavailable; keeping existing values" >&2
+  fi
 done
-if [ -n "$${voice_env}" ]; then
-  while IFS= read -r voice_env_line; do
-    [ -n "$${voice_env_line}" ] || continue
-    sed -i "/^$${voice_env_line%%=*}=/d" /home/openclaw/.openclaw/.env
-    printf '%s\n' "$${voice_env_line}" >>/home/openclaw/.openclaw/.env
-  done <<<"$${voice_env}"
-else
-  echo 'voice env secret unavailable; keeping existing values' >&2
-fi
 
 # Install the plugin before writing the config that references it, so the
 # install run does not warn about it being missing.
