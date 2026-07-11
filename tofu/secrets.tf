@@ -8,21 +8,21 @@ data "http" "twilio_account" {
   url = "https://api.twilio.com/2010-04-01/Accounts/${twilio_api_accounts_incoming_phone_numbers.voice.account_sid}.json"
 
   request_headers = {
-    Authorization = "Basic ${base64encode("${var.twilio_rest_username}:${var.twilio_rest_password}")}"
+    Authorization = "Basic ${base64encode("${var.TWILIO_API_KEY}:${var.TWILIO_API_SECRET}")}"
   }
 
   lifecycle {
     postcondition {
       condition     = self.status_code == 200
-      error_message = "Reading the Twilio account failed; check the twilio_rest_* variables."
+      error_message = "Reading the Twilio account failed; check the TF_VAR_TWILIO_API_KEY/TF_VAR_TWILIO_API_SECRET variables."
     }
 
-    # Twilio redacts auth_token to an empty string (still HTTP 200) when the
-    # caller is not permitted to read it, which would silently place an empty
-    # credential in Secret Manager.
+    # Twilio redacts auth_token to an empty string (still HTTP 200) unless
+    # the request is authenticated with the auth token itself, which would
+    # silently place an empty credential in Secret Manager.
     postcondition {
       condition     = length(try(jsondecode(self.response_body).auth_token, "")) > 0
-      error_message = "The Account response has no auth token; the twilio_rest_* credential cannot read it. Use credentials permitted to view the auth token."
+      error_message = "The Account response has no auth token. Set TF_VAR_TWILIO_API_KEY to the account SID and TF_VAR_TWILIO_API_SECRET to the auth token; real API keys get a redacted response."
     }
   }
 }

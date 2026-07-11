@@ -29,13 +29,13 @@ installs:
   Cloudflare R2 bucket named `tofu`
 - `CLOUDFLARE_API_TOKEN` exported with DNS, Zone Settings, and Zone Rulesets
   write access to the zone named in `workspace.tf` (`veronica-agent.com`)
-- `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported (or `TWILIO_ACCOUNT_SID`
-  and `TWILIO_AUTH_TOKEN`) for a Twilio account able to purchase phone numbers
-- `TF_VAR_twilio_rest_username` and `TF_VAR_twilio_rest_password` exported for
-  reading the account's auth token. The credential must be permitted to view
-  the auth token — Twilio redacts it to an empty string for keys that are
-  not, which the plan rejects. The account SID and auth token themselves
-  always work
+- `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported for the provider, and the
+  same values mirrored as `TF_VAR_TWILIO_API_KEY` and `TF_VAR_TWILIO_API_SECRET`
+  for reading the auth token. Despite the names, set them to the **account SID
+  and auth token**, not a real API key: Twilio's security model offers no
+  scoped credential that can read the auth token, and redacts it to an empty
+  string on any read not authenticated by the token itself (the plan rejects
+  that)
 - Billing enabled on the target Google Cloud project
 
 ## Deploy
@@ -142,7 +142,8 @@ allowlist from [SETUP.md](SETUP.md) afterwards.
   from the Account API at plan time, stored in remote state and in Secret
   Manager, and injected into the VM's env file at boot. Only the VM service
   account can access the secret. To rotate, create and promote a secondary
-  auth token in Twilio, then apply and reboot the VM.
+  auth token in Twilio, then apply; the changed secret version replaces the
+  VM so the fresh boot picks it up.
 - The gateway token is generated on the VM and stored at
   `/home/openclaw/.openclaw/.env` with restricted permissions. OpenClaw loads
   this global environment file for both CLI and systemd gateway use.
