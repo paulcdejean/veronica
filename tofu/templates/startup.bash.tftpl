@@ -104,6 +104,15 @@ cat >/home/openclaw/.openclaw/openclaw.json <<'JSON'
       mode: "token",
       token: "$${OPENCLAW_GATEWAY_TOKEN}",
     },
+    http: {
+      endpoints: {
+        // Off by default; the voice bridge drives the agent through this
+        // OpenResponses endpoint on loopback.
+        responses: {
+          enabled: true,
+        },
+      },
+    },
   },
   plugins: {
     entries: {
