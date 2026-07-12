@@ -185,7 +185,12 @@ async function speakGreeting(env, callId) {
     socket.send(
       JSON.stringify({
         type: "response.create",
-        response: { instructions: `Greet the caller with exactly: "${env.VOICE_GREETING}"` },
+        response: {
+          instructions: `Say exactly this and nothing more: "${env.VOICE_GREETING}"`,
+          // Hard cap so the greeting can't grow a monologue; later responses
+          // (the caller's turns) are unaffected.
+          max_output_tokens: 30,
+        },
       }),
     );
   });
