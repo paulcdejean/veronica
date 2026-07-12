@@ -28,7 +28,7 @@ locals {
       # verse (male, high)
       # marin (female, recommended)
       # cedar (male, recommended)
-      voice_voice    = "shimmer"
+      voice_voice    = "marin" # Steven's preference
       voice_greeting = "Veronica speaking"
 
       voice_instructions = <<-EOT
