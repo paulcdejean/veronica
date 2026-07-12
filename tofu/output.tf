@@ -30,7 +30,7 @@ output "twilio_phone_number" {
 
 output "voice_contact_numbers" {
   value       = local.voice_contacts
-  description = "The resolved caller allowlist: every contacts-KV name whose number is filled in."
+  description = "The resolved caller allowlist: every contact name whose metadata entry holds a number."
 }
 
 output "gateway_token_command" {

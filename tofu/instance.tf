@@ -1,20 +1,19 @@
 locals {
   openclaw_startup_script = templatefile("${path.module}/templates/startup.bash.tftpl", {
-    node_version           = local.workspace.node_version
-    node_linux_x64_sha256  = local.workspace.node_linux_x64_sha256
-    openclaw_version       = local.workspace.openclaw_version
-    codex_plugin_version   = local.workspace.codex_plugin_version
-    codex_version          = local.workspace.codex_version
-    ws_version             = local.workspace.ws_version
-    voice_hostname         = local.workspace.voice_hostname
-    voice_webhook_port     = local.workspace.voice_webhook_port
-    voice_greeting         = local.workspace.voice_greeting
-    voice_bridge_sha256    = filesha256("${path.module}/files/voice-bridge.mjs")
-    bootstrap_bucket       = google_storage_bucket.bootstrap.name
-    voice_bridge_object    = google_storage_bucket_object.voice_bridge.name
-    project_id             = local.workspace.project_id
-    voice_env_secret       = google_secret_manager_secret.voice_env.secret_id
-    voice_allowlist_secret = google_secret_manager_secret.voice_allowlist.secret_id
+    node_version          = local.workspace.node_version
+    node_linux_x64_sha256 = local.workspace.node_linux_x64_sha256
+    openclaw_version      = local.workspace.openclaw_version
+    codex_plugin_version  = local.workspace.codex_plugin_version
+    codex_version         = local.workspace.codex_version
+    ws_version            = local.workspace.ws_version
+    voice_hostname        = local.workspace.voice_hostname
+    voice_webhook_port    = local.workspace.voice_webhook_port
+    voice_greeting        = local.workspace.voice_greeting
+    voice_bridge_sha256   = filesha256("${path.module}/files/voice-bridge.mjs")
+    bootstrap_bucket      = google_storage_bucket.bootstrap.name
+    voice_bridge_object   = google_storage_bucket_object.voice_bridge.name
+    project_id            = local.workspace.project_id
+    voice_env_secret      = google_secret_manager_secret.voice_env.secret_id
   })
 }
 
@@ -75,22 +74,32 @@ resource "google_compute_instance" "openclaw" {
     replace_triggered_by = [
       terraform_data.openclaw_startup_script,
       # The secret is only read at boot, so a rotated payload (new version
-      # resource) must roll the box to take effect. The allowlist secret is
-      # deliberately absent: adding a caller should cost a reboot, not the
-      # device-code logins a replacement wipes.
+      # resource) must roll the box to take effect.
       google_secret_manager_secret_version.voice_env,
     ]
+
+    # The VM reads the caller allowlist from the voice-contact-* project
+    # metadata at boot; these plan-time checks (on the same directory, read
+    # in contacts.tf) catch an empty or malformed directory before a box is
+    # built that would boot with the deny-all placeholder.
+    precondition {
+      condition     = length(local.voice_contacts) > 0
+      error_message = "No contact has a phone number yet. Apply 00_contacts, then fill in at least one voice-contact-* value on the Compute Engine metadata page (see its contacts_console_url output)."
+    }
+
+    precondition {
+      condition     = length(local.invalid_voice_contacts) == 0
+      error_message = "Some contacts have values that are not E.164 numbers (+15125551234 style): ${join(", ", local.invalid_voice_contacts)}. Fix them on the Compute Engine metadata page."
+    }
   }
 
   depends_on = [
     google_compute_router_nat.openclaw,
     google_project_service.enabled["iap.googleapis.com"],
-    # The first boot reads the voice secrets and downloads the voice bridge,
-    # so all must exist and be readable.
+    # The first boot reads the voice secret and downloads the voice bridge,
+    # so both must exist and be readable.
     google_secret_manager_secret_version.voice_env,
     google_secret_manager_secret_iam_member.voice_env_reader,
-    google_secret_manager_secret_version.voice_allowlist,
-    google_secret_manager_secret_iam_member.voice_allowlist_reader,
     google_storage_bucket_iam_member.bootstrap_reader,
   ]
 }

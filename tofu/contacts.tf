@@ -1,11 +1,13 @@
 # The caller allowlist lives in project metadata owned by the 00_contacts
 # layer: one voice-contact-* key per name in allowed_callers.txt, with the
 # phone numbers typed into the Compute Engine metadata page so they never
-# appear in the repo. This layer reads them at plan time, keeps every name
-# whose number is filled in, and delivers the list to the VM through the
-# voice_allowlist secret. The google provider has no data source for project
-# metadata, so the read is a single GET of the project resource with the
-# provider's own token.
+# appear in the repo. The VM reads those entries straight from the metadata
+# server on every boot (see the startup script); this plan-time read exists
+# only to validate the directory — the instance's preconditions fail the
+# plan if it is empty or malformed — and to surface it through the
+# voice_contact_numbers output. The google provider has no data source for
+# project metadata, so the read is a single GET of the project resource with
+# the provider's own token.
 
 data "google_client_config" "default" {}
 
@@ -46,7 +48,7 @@ locals {
 
   # Presence of a number authorizes the caller; names whose entry is still
   # empty, or not created yet because 00_contacts has not been applied, are
-  # simply skipped (the secret's precondition catches the all-empty case).
+  # simply skipped (the instance's precondition catches the all-empty case).
   voice_contacts = {
     for name, key in local.contact_keys :
     name => trimspace(local.project_metadata[key])

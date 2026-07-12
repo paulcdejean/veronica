@@ -49,17 +49,19 @@ sudo -iu openclaw codex login status
 ## 3. Caller allowlist — nothing to do
 
 Both the Twilio credentials and the caller allowlist are injected into
-`/home/openclaw/.openclaw/.env` automatically on every boot from Secret
-Manager, so leave the `TWILIO_*` and `VOICE_ALLOW_FROM` lines alone (edits
-are overwritten). The allowlist comes from the contacts directory: names in
+`/home/openclaw/.openclaw/.env` automatically on every boot — the `TWILIO_*`
+lines from Secret Manager, the `VOICE_ALLOW_FROM` line straight from the
+`voice-contact-*` project metadata — so leave those lines alone (edits are
+overwritten). The allowlist comes from the contacts directory: names in
 `allowed_callers.txt` at the repo root, numbers typed into the Compute
 Engine metadata page (`tofu output -raw contacts_console_url` in
 `00_contacts/`).
 
-To change callers later: update the metadata page (and apply `00_contacts`
-if a name was added or removed), run `tofu apply` in `tofu/` to refresh the
-allowlist secret, and reboot the VM with `sudo reboot` — the boot re-injects
-the env file and restarts the services. No VM replacement, no redoing logins.
+To change a caller's number later: update the metadata page and reboot the
+VM with `sudo reboot` — the boot re-reads the metadata and restarts the
+services. No apply, no VM replacement, no redoing logins. Adding or removing
+a *name* additionally means editing `allowed_callers.txt` and applying
+`00_contacts` first.
 
 ## 4. Verify the webhook
 

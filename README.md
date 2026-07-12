@@ -126,13 +126,14 @@ reasoning stays on the ChatGPT login.
 
 Who may call is decided by the contacts directory: every name in
 `allowed_callers.txt` whose `voice-contact-*` metadata entry has a phone
-number filled in is allowlisted. The main layer resolves the directory at
-plan time (inspect it with the `voice_contact_numbers` output), writes the
-numbers to the voice-allowlist secret, and the VM injects `VOICE_ALLOW_FROM`
-from it on every boot. To change callers: edit the metadata page (and
-`allowed_callers.txt` + `tofu apply` in `00_contacts` if the name is new),
-apply the main layer to refresh the secret, and reboot the VM — no
-replacement, no login loss.
+number filled in is allowlisted. The VM reads those entries straight from
+the metadata server on every boot and rewrites `VOICE_ALLOW_FROM`, so
+changing a caller's number is just an edit on the metadata page plus a
+reboot — no apply, no replacement, no login loss. (Adding or removing a
+*name* still means editing `allowed_callers.txt` and applying `00_contacts`.)
+The main layer only validates the directory at plan time — the plan fails if
+no number is filled in or a value is not E.164 — and surfaces it through the
+`voice_contact_numbers` output.
 
 ## Open the dashboard
 
@@ -196,9 +197,10 @@ the contacts directory at boot).
   answering a signed webhook moments earlier. The Cloudflare-to-origin hop is
   unencrypted by design (`flexible` SSL); public traffic from Twilio to
   Cloudflare is TLS.
-- The callers' phone numbers live in project metadata (readable by anything
-  in the project with compute read access) and, once resolved, in remote
-  state and Secret Manager — never in the repo, which carries only their
+- The callers' phone numbers live in project metadata, readable by anything
+  in the project with compute read access and by any process on the VM via
+  the metadata server; the main layer's plan-time validation read also lands
+  them in remote state. They are never in the repo, which carries only their
   names.
 - The inbound allowlist is caller-ID filtering, not authentication; caller ID
   can be spoofed, so do not treat the phone line as a trusted control channel.
