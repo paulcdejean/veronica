@@ -1,98 +1,63 @@
 # From a successful apply to a phone call
 
-Everything below assumes `tofu apply` in `tofu/` has completed. Commands
-marked `local$` run on your machine from `tofu/`; unmarked commands run on
-the VM as your SSH user.
+Everything below assumes `tofu apply` has completed in both layers.
+Commands run on your machine; `tofu output` commands run from `tofu/`.
 
-## 1. SSH in and wait for the bootstrap
+## 1. Create the OpenAI webhook endpoint
 
-```bash
-local$ tofu output -raw ssh_command
-```
+On <https://platform.openai.com>, in the project named by
+`openai_project_id`:
 
-Run the printed `gcloud compute ssh` command, then wait for the bootstrap to
-finish installing Node, OpenClaw, and the voice bridge. The startup script
-runs under `google-startup-scripts.service` (the guest agent, not cloud-init,
-so `cloud-init status` reports done while the install is still running); this
-blocks until every boot job, the bootstrap included, has finished:
+1. Make sure billing is enabled (the Realtime API bills per token).
+2. Under **Settings → Project → Webhooks**, create an endpoint with the URL
+   from `tofu output -raw openai_webhook_url`, subscribed to the
+   `realtime.call.incoming` event.
+3. Copy the endpoint's signing secret (`whsec_...`) — it is uploaded to the
+   Worker in step 3.
 
-```bash
-systemctl is-system-running --wait
-```
+## 2. Create the API key
 
-Then confirm the gateway and the voice bridge came up:
+Under **API keys**, create a key scoped to the same project. The Worker
+uses it to accept/reject calls and to nudge the greeting.
 
-```bash
-sudo systemctl status openclaw-gateway voice-bridge --no-pager
-```
+## 3. Upload the Worker's secrets
 
-To watch the bootstrap in progress instead, follow its log with
-`sudo journalctl -fu google-startup-scripts.service`.
-
-## 2. Connect the OpenAI account
-
-OpenClaw and the standalone Codex CLI keep separate credential stores, so
-run both device-code logins as the service user:
+The two secrets go straight from your clipboard to Cloudflare via wrangler
+— never through OpenTofu. `CLOUDFLARE_API_TOKEN` in the environment is
+enough for wrangler; each command prompts for the value:
 
 ```bash
-sudo -iu openclaw openclaw models auth login --provider openai --device-code
-sudo -iu openclaw codex login --device-auth
+npx wrangler secret put OPENAI_API_KEY --name "$(tofu output -raw worker_name)"
+npx wrangler secret put OPENAI_WEBHOOK_SECRET --name "$(tofu output -raw worker_name)"
 ```
 
-Confirm both:
+Re-running `tofu apply` later keeps these secrets in place
+(`keep_bindings`), so this step happens once.
 
-```bash
-sudo -iu openclaw openclaw models list --provider openai
-sudo -iu openclaw codex login status
-```
+## 4. Fill in the caller numbers
 
-## 3. Caller allowlist — nothing to do
-
-Both the Twilio credentials and the caller allowlist are injected into
-`/home/openclaw/.openclaw/.env` automatically on every boot — the `TWILIO_*`
-lines from Secret Manager, the `VOICE_ALLOW_FROM` line straight from the
-`voice-contact-*` project metadata — so leave those lines alone (edits are
-overwritten). The allowlist comes from the contacts directory: names in
-`allowed_callers.txt` at the repo root, numbers typed into the Compute
-Engine metadata page (`tofu output -raw contacts_console_url` in
-`00_contacts/`).
-
-To change a caller's number later: update the metadata page and reboot the
-VM with `sudo reboot` — the boot re-reads the metadata and restarts the
-services. No apply, no VM replacement, no redoing logins. Adding or removing
-a *name* additionally means editing `allowed_callers.txt` and applying
-`00_contacts` first.
-
-## 4. Verify the webhook
-
-```bash
-sudo systemctl status voice-bridge --no-pager
-```
-
-Then confirm it is reachable through Cloudflare:
-
-```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://voice.veronica-agent.com/voice/webhook
-```
-
-`405` is the expected answer for a bare GET; a timeout or a `52x` Cloudflare
-error means the bridge is not listening or the firewall is not admitting
-Cloudflare.
+If you have not already: open `tofu output -raw contacts_dashboard_url`
+and give each contact entry the caller's number in E.164 form
+(`+15125551234`). A number's presence is what authorizes the caller, and
+edits take effect on the next call.
 
 ## 5. Call the number
 
-Call the Twilio number from the allowlisted phone. Twilio answers and speaks
-the greeting immediately, transcribes what you say, and the agent replies by
-voice; hang up to end the call. Each caller number keeps one continuous agent
-session across calls.
+Call `tofu output -raw twilio_phone_number` from an allowlisted phone.
+Veronica speaks the greeting first; hang up to end the call.
 
 If the call does not connect, check in order:
 
 ```bash
-sudo journalctl -u voice-bridge -n 100 --no-pager       # webhook/relay errors
-sudo journalctl -u openclaw-gateway -n 100 --no-pager   # agent errors
-sudo ss -tlnp | grep 3334                               # bridge listening
+npx wrangler tail "$(tofu output -raw worker_name)"   # webhook received? accepted or rejected?
 ```
 
-and the call log in the Twilio console, which shows the exact webhook
-response Twilio received.
+- Nothing in the tail: Twilio never reached the Worker or OpenAI never sent
+  the webhook — the Twilio console's call log shows the TwiML fetch and the
+  SIP leg's response code.
+- `bad or missing signature`: the uploaded `OPENAI_WEBHOOK_SECRET` does not
+  match the endpoint's signing secret.
+- `not in allowlist`: the KV value is missing, malformed, or not the number
+  you are calling from.
+- Accepted but silent: check the session in platform.openai.com's Logs; if
+  the greeting nudge failed the model still answers when you speak first.
