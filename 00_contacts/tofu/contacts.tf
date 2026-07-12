@@ -1,28 +1,18 @@
-# One KV entry per allowed caller, created empty: the phone number is typed
-# into the Cloudflare KV dashboard by hand, which is why applies must never
-# touch the value again. Removing a name from allowed_callers.txt deletes
-# the entry and with it the caller's authorization. KV key names must not
-# contain whitespace, so names are kebab-cased.
+# One project metadata entry per allowed caller, created empty: the phone
+# number is filled in by hand on the Compute Engine metadata page, which is
+# why applies must never touch the value again. Removing a name from
+# allowed_callers.txt deletes the entry and with it the caller's
+# authorization. Metadata keys forbid spaces, so names are kebab-cased; the
+# telephony layer's webhook and session driver derive the same keys at call
+# time, so a number change takes effect on the next call — no apply.
 #
-# The voice Worker in the main layer reads this namespace at call time, so
-# a number change takes effect on the next call — no apply, no restart.
-
-data "cloudflare_accounts" "this" {
-  max_items = 1
-}
-
-resource "cloudflare_workers_kv_namespace" "contacts" {
-  account_id = data.cloudflare_accounts.this.result[0].id
-  title      = "${tofu.workspace}-contacts"
-}
-
-resource "cloudflare_workers_kv" "contact" {
+# Project metadata is readable by every workload in the project with compute
+# read access, which is accepted for phone numbers here.
+resource "google_compute_project_metadata_item" "contact" {
   for_each = local.contact_names
 
-  account_id   = data.cloudflare_accounts.this.result[0].id
-  namespace_id = cloudflare_workers_kv_namespace.contacts.id
-  key_name     = lower(replace(each.value, "/[^A-Za-z0-9]+/", "-"))
-  value        = ""
+  key   = "voice-contact-${lower(replace(each.value, "/[^A-Za-z0-9]+/", "-"))}"
+  value = ""
 
   lifecycle {
     ignore_changes = [value]

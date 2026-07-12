@@ -7,13 +7,9 @@ terraform {
       version = "7.39.0"
     }
 
-    # Transition-only: no cloudflare resources remain in this configuration,
-    # but the KV namespace from the Worker era is still in state and needs
-    # its provider to be destroyed. Delete this block (and the provider
-    # below) after the demolition apply.
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "5.22.0"
+    time = {
+      source  = "hashicorp/time"
+      version = "0.14.0"
     }
   }
 
@@ -35,7 +31,5 @@ terraform {
 
 provider "google" {
   project = local.workspace.project_id
+  region  = local.workspace.region
 }
-
-# Transition-only, see above. Reads CLOUDFLARE_API_TOKEN from the environment.
-provider "cloudflare" {}

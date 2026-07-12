@@ -1,19 +1,19 @@
 locals {
   workspace = local.workspaces[tofu.workspace]
 
-  # This follows lightning's workspace-driven settings pattern while keeping
-  # the entire deployment in one OpenTofu root module.
+  # This follows lightning's workspace-driven settings pattern.
   workspaces = {
     veronica = {
-      voice_zone      = "veronica-agent.com"
-      voice_hostname  = "voice.veronica-agent.com"
+      project_id = "untrusted-agent"
+      region     = "us-central1"
+
       voice_area_code = "205"
 
       # From platform.openai.com -> Settings -> General. Not a credential —
       # it only names the SIP destination the calls are handed to.
       openai_project_id = "proj_qnaIpxtc3PddMxEKQUeqry4O"
 
-      voice_model    = "gpt-realtime-2.1-mini"
+      voice_model = "gpt-realtime-2.1-mini"
       # Currently available voices:
       # alloy (female)
       # ash (male)

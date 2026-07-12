@@ -4,16 +4,16 @@ output "twilio_phone_number" {
 }
 
 output "openai_webhook_url" {
-  value       = "https://${cloudflare_workers_custom_domain.voice.hostname}/openai-webhook"
+  value       = "${google_cloudfunctions2_function.webhook.service_config[0].uri}/openai-webhook"
   description = "Configure this as the realtime.call.incoming webhook endpoint on platform.openai.com."
 }
 
-output "worker_name" {
-  value       = cloudflare_workers_script.voice.script_name
-  description = "Pass as --name to wrangler when uploading the Worker's secrets."
+output "contacts_console_url" {
+  value       = "https://console.cloud.google.com/compute/metadata?project=${local.workspace.project_id}"
+  description = "Edit the callers' phone numbers here, in the voice-contact-* keys (E.164, for example +15125551234)."
 }
 
-output "contacts_dashboard_url" {
-  value       = "https://dash.cloudflare.com/${data.cloudflare_accounts.this.result[0].id}/workers/kv/namespaces/${local.contacts_namespace_id}"
-  description = "Edit the callers' phone numbers here (E.164, for example +15125551234)."
+output "session_executions_command" {
+  value       = "gcloud run jobs executions list --job ${google_cloud_run_v2_job.session.name} --region ${local.workspace.region} --project ${local.workspace.project_id}"
+  description = "The session-driver job runs one execution per call; this lists them."
 }
