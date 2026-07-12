@@ -14,7 +14,21 @@ locals {
       openai_project_id = "proj_qnaIpxtc3PddMxEKQUeqry4O"
 
       voice_model    = "gpt-realtime-2.1-mini"
-      voice_voice    = "marin"
+      # Currently available voices:
+      # alloy (female)
+      # ash (male)
+      # ballad (male, accent)
+      # coral (female)
+      # echo (male)
+      # fable (unavailable for realtime)
+      # nova (unavailable for realtime)
+      # onyx (unavailable for realtime)
+      # sage (female)
+      # shimmer (female, low)
+      # verse (male, high)
+      # marin (female, recommended)
+      # cedar (male, recommended)
+      voice_voice    = "shimmer"
       voice_greeting = "Veronica speaking"
 
       voice_instructions = <<-EOT
