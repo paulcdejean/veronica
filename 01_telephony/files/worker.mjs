@@ -19,6 +19,11 @@ const TWIML_PATH = "/twiml";
 const WEBHOOK_PATH = "/openai-webhook";
 const E164 = /^\+[1-9][0-9]{1,14}$/;
 
+// The SIP answer and Twilio's answerOnBridge take a beat to connect the
+// caller's audio path after accept; a greeting spoken immediately plays
+// into the void and reaches the caller clipped ("...ronica speaking").
+const GREETING_SETTLE_MS = 500;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -172,27 +177,54 @@ async function speakGreeting(env, callId) {
       resolve();
     };
     socket.addEventListener("message", (event) => {
+      let message;
       try {
-        if (JSON.parse(event.data).type === "response.done") {
-          done();
-        }
+        message = JSON.parse(event.data);
       } catch {
-        // Non-JSON frames are none of our business.
+        return; // Non-JSON frames are none of our business.
+      }
+      // The server reports the session's effective config on attach; logging
+      // it shows exactly which instructions the live call is running on.
+      if (message.type === "session.created" || message.type === "session.updated") {
+        console.log(
+          `${message.type}: model=${message.session?.model} instructions=${JSON.stringify(message.session?.instructions)}`,
+        );
+      }
+      if (message.type === "error") {
+        console.error(`realtime error: ${JSON.stringify(message.error)}`);
+      }
+      if (message.type === "response.done") {
+        const response = message.response ?? {};
+        console.log(
+          `greeting done: status=${response.status} details=${JSON.stringify(response.status_details)} usage=${JSON.stringify(response.usage)}`,
+        );
+        done();
       }
     });
     socket.addEventListener("close", done);
     socket.addEventListener("error", done);
-    socket.send(
-      JSON.stringify({
-        type: "response.create",
-        response: {
-          instructions: `Say exactly this and nothing more: "${env.VOICE_GREETING}"`,
-          // Hard cap so the greeting can't grow a monologue; later responses
-          // (the caller's turns) are unaffected.
-          max_output_tokens: 30,
-        },
-      }),
-    );
+    // Attaching does not replay session.created, so nudge the server into
+    // echoing session.updated (a no-op update) to get the effective
+    // instructions into the logs.
+    socket.send(JSON.stringify({ type: "session.update", session: { type: "realtime" } }));
+    setTimeout(() => {
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "response.create",
+            response: {
+              instructions: `Say exactly this and nothing more: "${env.VOICE_GREETING}"`,
+              // Hard cap so the greeting can't grow a monologue; later
+              // responses (the caller's turns) are unaffected. Output audio
+              // runs ~20 tokens per spoken second, so this is ~5 seconds.
+              max_output_tokens: 200,
+            },
+          }),
+        );
+      } catch {
+        // Socket closed while we waited; the call is already over.
+      }
+    }, GREETING_SETTLE_MS);
   });
   try {
     socket.close();
