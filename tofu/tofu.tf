@@ -7,15 +7,6 @@ terraform {
       version = "5.22.0"
     }
 
-    # Transition only: no google resources remain in the configuration, but
-    # destroying the retired GCP estate still in the state requires the
-    # provider. Delete this block (and the provider below) after the first
-    # apply on veronica-only succeeds.
-    google = {
-      source  = "hashicorp/google"
-      version = "7.39.0"
-    }
-
     twilio = {
       source  = "twilio/twilio"
       version = "0.18.46"
@@ -40,13 +31,6 @@ terraform {
 
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}
-
-# Transition only — see the note in required_providers.
-provider "google" {
-  project = "untrusted-agent"
-  region  = "us-central1"
-  zone    = "us-central1-a"
-}
 
 # Reads TWILIO_API_KEY/TWILIO_API_SECRET from the environment, falling back
 # to TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN.

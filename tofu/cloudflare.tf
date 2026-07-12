@@ -81,12 +81,23 @@ resource "cloudflare_workers_script" "voice" {
     },
   ]
 
+  # Fully specified, including the API's defaults: the provider diffs the
+  # config against what the API returns, so any attribute left unset here
+  # comes back filled in and causes a perpetual in-place update.
   observability = {
-    enabled = true
+    enabled            = true
+    head_sampling_rate = 1
 
     logs = {
-      enabled         = true
-      invocation_logs = true
+      enabled            = true
+      invocation_logs    = true
+      head_sampling_rate = 1
+    }
+
+    traces = {
+      enabled            = false
+      head_sampling_rate = 1
+      persist            = true
     }
   }
 

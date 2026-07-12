@@ -6,15 +6,6 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "5.22.0"
     }
-
-    # Transition only: destroying the voice-contact-* project metadata
-    # entries still in the state requires the provider. Delete this block
-    # (and the provider below) after the first apply on veronica-only
-    # succeeds.
-    google = {
-      source  = "hashicorp/google"
-      version = "7.39.0"
-    }
   }
 
   backend "s3" {
@@ -35,8 +26,3 @@ terraform {
 
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}
-
-# Transition only — see the note in required_providers.
-provider "google" {
-  project = "untrusted-agent"
-}

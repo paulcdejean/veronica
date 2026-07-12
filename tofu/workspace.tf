@@ -11,18 +11,14 @@ locals {
 
       # From platform.openai.com -> Settings -> General. Not a credential —
       # it only names the SIP destination the calls are handed to.
-      openai_project_id = ""
+      openai_project_id = "proj_qnaIpxtc3PddMxEKQUeqry4O"
 
       voice_model    = "gpt-realtime-2.1-mini"
       voice_voice    = "marin"
-      voice_greeting = "Hi, this is Veronica. What can I do for you?"
+      voice_greeting = "Veronica speaking"
 
       voice_instructions = <<-EOT
-        You are Veronica, a personal assistant, speaking on a phone call.
-        Talk the way a capable person talks on the phone: natural, warm, and
-        brief — a sentence or two unless the caller asks for more. Never use
-        markdown, lists, or emoji; you are a voice, not a screen. If you do
-        not know something, say so plainly instead of guessing.
+        You are Veronica, an AI personal assistant.
       EOT
     }
   }
