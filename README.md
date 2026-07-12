@@ -1,171 +1,112 @@
-# OpenClaw on Google Cloud
+# Veronica, a phone-callable voice agent
 
-This single OpenTofu root creates a Google Compute Engine VM for an OpenClaw
-agent reachable by phone. It follows the pinned-provider and workspace
-conventions from `lightning`, without splitting the deployment into ordered
-layers.
+Veronica is a voice agent you reach by calling a phone number. Twilio
+answers the call and hands it to OpenAI's Realtime API over SIP;
+[gpt-realtime](https://developers.openai.com/api/docs/guides/realtime-sip)
+does the talking. The only code is a small Cloudflare Worker that plays
+receptionist: it tells Twilio where to send the call, and when OpenAI asks
+"should I take this?" it checks the caller against the contacts directory
+and answers with Veronica's persona. Audio never touches the Worker.
 
-The VM has a static public IP so the agent can receive Twilio voice webhooks,
-but ingress is limited to SSH from Google IAP and the voice webhook port from
-Cloudflare's published IP ranges. The webhook hostname is proxied through
-Cloudflare (which terminates public TLS from Twilio), and the OpenClaw gateway
-itself listens on loopback with a randomly generated token. The bootstrap
-installs:
-
-- Ubuntu 26.04 LTS from the `ubuntu-2604-lts-amd64` image family
-- Node.js LTS `24.18.0`, verified against its published SHA-256 checksum
-- OpenClaw `2026.6.11`, configured for `openai/gpt-5.5`
-- The official `@openclaw/codex` app-server plugin/runtime `2026.6.11`
-- The standalone `@openai/codex` CLI `0.144.1`
-- An always-on systemd gateway service under a dedicated `openclaw` user
-- A small voice bridge service (`tofu/files/voice-bridge.mjs`) that connects
-  Twilio ConversationRelay to the gateway for phone calls
+The repo follows the pinned-provider, workspace, and ordered-layer
+conventions from `lightning`, in two layers: `00_contacts` owns the caller
+directory (a Workers KV namespace with one entry per name in
+`allowed_callers.txt`, the phone numbers typed into the KV dashboard so
+they never enter the repo), and `tofu` is the main layer with the Worker,
+its custom domain, and the Twilio number.
 
 ## Prerequisites
 
 - OpenTofu `1.12.3`
-- Google Cloud CLI authenticated with permission to enable APIs and create the
-  resources in this module
 - The same `cloudflare` AWS profile used by `lightning`, with access to its
   Cloudflare R2 bucket named `tofu`
-- `CLOUDFLARE_API_TOKEN` exported with DNS, Zone Settings, and Zone Rulesets
-  write access to the zone named in `workspace.tf` (`veronica-agent.com`)
-- `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported for the provider, and the
-  same values mirrored as `TF_VAR_TWILIO_API_KEY` and `TF_VAR_TWILIO_API_SECRET`
-  for reading the auth token. Despite the names, set them to the **account SID
-  and auth token**, not a real API key: Twilio's security model offers no
-  scoped credential that can read the auth token, and redacts it to an empty
-  string on any read not authenticated by the token itself (the plan rejects
-  that)
-- Billing enabled on the target Google Cloud project
+- `CLOUDFLARE_API_TOKEN` exported with Workers Scripts, Workers KV Storage,
+  and DNS write access to the zone named in `workspace.tf`
+  (`veronica-agent.com`)
+- `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported for the provider (the
+  account SID and auth token)
+- An OpenAI account with API billing enabled (the Realtime API is not
+  covered by a ChatGPT subscription); put its project id in `workspace.tf`
+  as `openai_project_id`
 
 ## Deploy
 
+The contacts layer comes first (in each layer, if the `veronica` workspace
+already exists, select it with `tofu workspace select veronica` instead):
+
 ```bash
-cd tofu
+cd 00_contacts
 tofu init
 tofu workspace new veronica
 tofu apply
 ```
 
-If `veronica` already exists, select it with `tofu workspace select veronica`.
-The project is selected in `workspace.tf`, and the authenticated Google caller
-is granted IAP tunneling, OS Login, and service-account use.
+Add each allowed caller's name to `allowed_callers.txt` at the repo root
+(one name per line); the apply creates one empty entry per name in the
+contacts KV namespace. Then open the printed `contacts_dashboard_url` and
+fill in each caller's phone number (E.164, for example `+15125551234`).
 
-## Onboard the agent
-
-After a successful apply, follow [SETUP.md](SETUP.md) step by step: it covers
-the OpenAI device-code logins, the Twilio credentials on the VM, and
-verification through to a working phone call. No credential is ever placed in
-OpenTofu variables, metadata, or state.
-
-## Open the terminal UI
-
-After connecting to the VM over SSH, run the TUI as the `openclaw` service
-user so it uses the agent's configuration and credentials:
+Then the main layer:
 
 ```bash
-sudo -iu openclaw openclaw tui
+cd ../tofu
+tofu init
+tofu workspace new veronica
+tofu apply
 ```
 
-The TUI connects to the local gateway and opens the default `main` session.
-Type a message and press Enter, use `/status` to inspect the connection, and
-press `Ctrl+C` to exit. Check the gateway if the TUI cannot connect:
+After the apply, follow [SETUP.md](SETUP.md): it covers the OpenAI console
+steps (webhook endpoint, API key) and uploading the Worker's two secrets
+with wrangler, through to a working phone call.
 
-```bash
-sudo systemctl status openclaw-gateway --no-pager
-```
+## How a call works
 
-For an embedded local session that bypasses the gateway, run
-`sudo -iu openclaw openclaw chat`. Normal use should go through
-`openclaw tui`.
+1. Twilio answers the number and POSTs to the Worker's `/twiml` route,
+   which replies with `<Dial><Sip>` pointing at
+   `sip:<project>@sip.api.openai.com` — the call rings through to OpenAI
+   while the caller still hears ringing (`answerOnBridge`).
+2. OpenAI POSTs a signed `realtime.call.incoming` webhook to the Worker's
+   `/openai-webhook` route. The Worker verifies the signature, reads the
+   contacts KV namespace, and rejects the call unless the caller's number
+   matches an entry (presence of a number authorizes the caller).
+3. On accept, the Worker supplies the session: model, voice, and Veronica's
+   instructions, all set in `workspace.tf`. It then attaches the call's
+   WebSocket just long enough to make Veronica speak the greeting first,
+   and disconnects; the call continues between Twilio and OpenAI directly.
 
-## Phone calls (Twilio)
-
-The apply provisions the whole call path. On the Twilio side it purchases a
-voice number (area code set in `workspace.tf`) and points its Voice webhook at
-the VM; destroying that resource would release the number permanently, so it
-carries `prevent_destroy`. On the Cloudflare side it creates a proxied DNS
-record for `voice.veronica-agent.com` pointing at the VM, sets the zone's SSL
-mode to `flexible`, and adds an origin rule routing that hostname to the
-bridge's port. Twilio's webhook IPs are dynamic and unpublished, so the GCP
-firewall admits only Cloudflare's ranges and the bridge verifies each
-request's `X-Twilio-Signature` instead.
-
-Calls run on [Twilio ConversationRelay](https://www.twilio.com/docs/voice/conversationrelay):
-Twilio answers the call, speaks the greeting, and performs all speech-to-text
-and text-to-speech on its side, billed per minute to the same Twilio account.
-The `voice-bridge` systemd service on the VM answers the voice webhook with
-`<Connect><ConversationRelay>` TwiML, receives each transcribed caller turn
-over a WebSocket, forwards it to the gateway's OpenResponses endpoint on
-loopback (one persistent agent session per caller number), and streams the
-reply text back for synthesis, so speech starts before the agent has finished
-composing. No speech vendor or API key beyond Twilio is involved; agent
-reasoning stays on the ChatGPT login.
-
-The remaining on-VM configuration (caller allowlist, verification) is covered
-in [SETUP.md](SETUP.md).
-
-## Open the dashboard
-
-In one local terminal, print and run the IAP-backed SSH tunnel command:
-
-```bash
-tofu output -raw dashboard_tunnel_command
-```
-
-In another terminal, print and run the token retrieval command:
-
-```bash
-tofu output -raw gateway_token_command
-```
-
-Then open <http://127.0.0.1:18789/> and enter that token. The dashboard is not
-exposed directly to the internet.
+Changing a caller's number is a KV dashboard edit — it takes effect on the
+next call, nothing to apply or restart. Adding or removing a *name* means
+editing `allowed_callers.txt` and applying `00_contacts`. Changing the
+persona, voice, or model is an edit to `workspace.tf` and a main-layer
+apply.
 
 ## Operations
 
 ```bash
-# Connect using the printed SSH command.
-tofu output -raw ssh_command
+# Stream the Worker's logs (accepts, rejects, webhook failures):
+npx wrangler tail veronica-voice
 
-# Then run on the VM:
-sudo systemctl status openclaw-gateway voice-bridge --no-pager
-sudo journalctl -u openclaw-gateway -n 200 --no-pager
-sudo journalctl -u voice-bridge -n 200 --no-pager
-sudo -iu openclaw openclaw doctor
-sudo -iu openclaw openclaw models status
+# Inspect the resolved outputs:
+tofu output
 ```
 
-To change machine sizing, region, package versions, or deletion protection,
-edit the `veronica` entry in `workspace.tf`. Any change that alters the
-startup script (package versions included) recreates the VM for a clean
-first boot, which wipes `/home/openclaw` — redo the logins and caller
-allowlist from [SETUP.md](SETUP.md) afterwards.
+Call records (including SIP responses from OpenAI) are in the Twilio
+console's call log; session activity is on platform.openai.com under Logs.
 
 ## Security notes
 
-- OAuth credentials live only in `/home/openclaw`, not in OpenTofu state.
-- The Twilio auth token is the one credential OpenTofu handles: it is read
-  from the Account API at plan time, stored in remote state and in Secret
-  Manager, and injected into the VM's env file at boot. Only the VM service
-  account can access the secret. To rotate, create and promote a secondary
-  auth token in Twilio, then apply; the changed secret version replaces the
-  VM so the fresh boot picks it up.
-- The gateway token is generated on the VM and stored at
-  `/home/openclaw/.openclaw/.env` with restricted permissions. OpenClaw loads
-  this global environment file for both CLI and systemd gateway use.
-- The VM service account receives no project IAM roles by default.
-- OS Login is enabled and project-wide SSH keys are blocked.
-- Anyone with root access to the VM can read the agent credentials and gateway
-  token; keep IAP and OS Login grants narrow.
-- The voice bridge port accepts plain HTTP, but only from Cloudflare's
-  published IP ranges, and the bridge rejects requests whose host is not the
-  voice hostname or whose Twilio signature does not verify. The
-  ConversationRelay WebSocket handshake carries no Twilio signature, so the
-  bridge only accepts sessions presenting a single-use nonce it minted while
-  answering a signed webhook moments earlier. The Cloudflare-to-origin hop is
-  unencrypted by design (`flexible` SSL); public traffic from Twilio to
-  Cloudflare is TLS.
-- The inbound allowlist is caller-ID filtering, not authentication; caller ID
-  can be spoofed, so do not treat the phone line as a trusted control channel.
+- The two real credentials — the OpenAI API key and webhook signing secret
+  — live only as Worker secrets, uploaded with wrangler; they are never in
+  OpenTofu variables, metadata, or state. The main layer's
+  `keep_bindings = ["secret_text"]` keeps re-applies from dropping them.
+- The webhook route only acts on requests carrying a valid Standard
+  Webhooks HMAC signature from OpenAI; the TwiML route serves a static
+  instruction whose only payload is the (non-secret) OpenAI project id.
+- The callers' phone numbers live in the contacts KV namespace (readable
+  by anything with Workers KV access to the account) — never in the repo,
+  which carries only their names.
+- The inbound allowlist is caller-ID filtering, not authentication; caller
+  ID can be spoofed, so do not treat the phone line as a trusted control
+  channel.
+- Destroying the Twilio number resource releases the number permanently,
+  so it carries `prevent_destroy`.

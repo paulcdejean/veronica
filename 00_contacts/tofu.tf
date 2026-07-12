@@ -6,21 +6,6 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "5.22.0"
     }
-
-    google = {
-      source  = "hashicorp/google"
-      version = "7.39.0"
-    }
-
-    http = {
-      source  = "hashicorp/http"
-      version = "3.6.0"
-    }
-
-    twilio = {
-      source  = "twilio/twilio"
-      version = "0.18.46"
-    }
   }
 
   backend "s3" {
@@ -39,15 +24,5 @@ terraform {
   }
 }
 
-provider "google" {
-  project = local.workspace.project_id
-  region  = local.workspace.region
-  zone    = local.workspace.zone
-}
-
 # Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}
-
-# Reads TWILIO_API_KEY/TWILIO_API_SECRET from the environment, falling back
-# to TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN.
-provider "twilio" {}
