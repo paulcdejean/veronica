@@ -1,7 +1,6 @@
 .DS_Store
 
 # OpenTofu working files and local plans. Keep .terraform.lock.hcl committed.
-**/.terraform/*
 *.tfstate
 *.tfstate.*
 *.tfplan
@@ -12,3 +11,4 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 .wrangler/
+.terraform/
