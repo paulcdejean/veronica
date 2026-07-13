@@ -45,6 +45,17 @@ conventions from `lightning`, each layer a `tofu/` root module beside the
   session job (pinned to the digest behind the image's `:latest`), the two
   OpenAI secrets, IAM, and the Twilio number.
 
+Each `src/` is its own Go module with the same shape: a thin entry point
+(`cmd/session/main.go` for the job; `function.go` for the function, where
+the Functions Framework requires its registration) over `internal/`
+packages split by who they talk to — `realtime` and `openai` speak to the
+OpenAI platform, `gcp` is the Google Cloud plumbing (metadata, secrets,
+allowlist, job executions), and `session`/`handler` hold each program's
+actual flow. The `gcp` plumbing is deliberately duplicated between the two
+modules: each build ships only its own `src/`. The pure logic — signature
+verification, caller extraction, allowlist parsing, TwiML — has table
+tests; `go test ./...` in either module runs them.
+
 ## Prerequisites
 
 - OpenTofu `1.12.3` and the `gcloud` CLI

@@ -35,10 +35,11 @@ locals {
   image = "${local.workspace.region}-docker.pkg.dev/${local.workspace.project_id}/${google_artifact_registry_repository.voice.repository_id}/session"
 
   # Any change to the session driver's source replaces the build resource
-  # below, which re-runs the provisioner.
+  # below, which re-runs the provisioner. Each path is hashed alongside its
+  # content so a pure rename (same bytes, new location) still rebuilds.
   source_hash = sha1(join("", [
     for f in sort(fileset("${path.module}/../src", "**")) :
-    filesha1("${path.module}/../src/${f}")
+    "${f}=${filesha1("${path.module}/../src/${f}")}"
   ]))
 }
 
