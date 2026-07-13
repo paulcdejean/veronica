@@ -7,6 +7,8 @@ locals {
       project_id = "untrusted-agent"
       region     = "us-central1"
 
+      voice_zone      = "veronica-agent.com"
+      voice_hostname  = "voice.veronica-agent.com"
       voice_area_code = "205"
 
       # From platform.openai.com -> Settings -> General. Not a credential —

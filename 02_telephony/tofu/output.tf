@@ -4,8 +4,8 @@ output "twilio_phone_number" {
 }
 
 output "openai_webhook_url" {
-  value       = "${google_cloudfunctions2_function.webhook.service_config[0].uri}/openai-webhook"
-  description = "Configure this as the realtime.call.incoming webhook endpoint on platform.openai.com."
+  value       = "https://${cloudflare_dns_record.voice.name}/openai-webhook"
+  description = "Configure this as the realtime.call.incoming webhook endpoint on platform.openai.com; the hostname is fixed, so this is write-once."
 }
 
 output "contacts_console_url" {

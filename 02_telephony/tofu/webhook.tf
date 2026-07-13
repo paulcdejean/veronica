@@ -45,7 +45,8 @@ resource "google_cloudfunctions2_function" "webhook" {
     available_memory   = "128Mi"
     max_instance_count = 3
     timeout_seconds    = 30
-    ingress_settings   = "ALLOW_ALL"
+    # The load balancer is the only door; the run.app URL answers nothing.
+    ingress_settings = "ALLOW_INTERNAL_AND_GCLB"
 
     environment_variables = {
       OPENAI_PROJECT_ID  = local.workspace.openai_project_id

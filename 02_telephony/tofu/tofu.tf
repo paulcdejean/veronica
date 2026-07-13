@@ -17,11 +17,10 @@ terraform {
       version = "0.18.46"
     }
 
-    # Transition-only: no cloudflare resources remain in this configuration,
-    # but the Worker era's script and custom domain are still in state and
-    # need their provider to be destroyed (see transition.tf). Delete this
-    # block, the provider below, and transition.tf after the demolition
-    # apply.
+    # Permanent resident again: the voice hostname's DNS records and the
+    # zone SSL setting live here. The Worker era's script and custom domain
+    # are still in state with no config, so the first apply also destroys
+    # them.
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "5.22.0"
@@ -53,5 +52,5 @@ provider "google" {
 # to TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN.
 provider "twilio" {}
 
-# Transition-only, see above. Reads CLOUDFLARE_API_TOKEN from the environment.
+# Reads CLOUDFLARE_API_TOKEN from the environment.
 provider "cloudflare" {}

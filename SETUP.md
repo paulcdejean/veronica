@@ -11,7 +11,9 @@ On <https://platform.openai.com>, in the project named by
 1. Make sure billing is enabled (the Realtime API bills per token).
 2. Under **Settings → Project → Webhooks**, create an endpoint with the URL
    from `tofu output -raw openai_webhook_url`, subscribed to the
-   `realtime.call.incoming` event.
+   `realtime.call.incoming` event. The hostname is the fixed
+   `voice.veronica-agent.com` front door, so this endpoint never needs
+   editing again.
 3. Copy the endpoint's signing secret (`whsec_...`) — it is stored in
    step 3.
 

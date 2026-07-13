@@ -19,6 +19,16 @@ does the talking. Two small Go programs on Google Cloud run the show:
 
 Audio never touches either program — it flows Twilio↔OpenAI directly.
 
+The webhook's public face is a fixed URL on a domain we own,
+`voice.veronica-agent.com`: a proxied Cloudflare record points at a global
+external load balancer that fronts the function (Cloud Run routes by
+hostname, so a bare CNAME can't do it), with a Google-managed certificate
+that provisions via DNS authorization so it renews behind the proxy — the
+pattern ported from cleverfi-opentofu. The URLs configured at OpenAI and
+Twilio are therefore write-once, whatever happens to the function behind
+them. The LB's forwarding rule is the stack's one always-on cost
+(~$18/month); everything else idles at zero.
+
 The repo follows the pinned-provider, workspace, and ordered-layer
 conventions from `lightning`, each layer a `tofu/` root module beside the
 `src/` it deploys:
@@ -41,6 +51,8 @@ conventions from `lightning`, each layer a `tofu/` root module beside the
 - Google application-default credentials with access to the project in
   `workspace.tf` (`gcloud auth login` and
   `gcloud auth application-default login`)
+- `CLOUDFLARE_API_TOKEN` exported with DNS write access to the zone named
+  in `02_telephony/tofu/workspace.tf` (`veronica-agent.com`)
 - `TWILIO_API_KEY` and `TWILIO_API_SECRET` exported for the provider (the
   account SID and auth token)
 - An OpenAI account with API billing enabled (the Realtime API is not
@@ -148,8 +160,9 @@ console's call log; session activity is on platform.openai.com under Logs.
   ID can be spoofed, so do not treat the phone line as a trusted control
   channel.
 - The function is publicly invokable by necessity (Twilio and OpenAI
-  cannot present Google credentials); each identity in the system gets the
-  smallest role that works, and the session driver never sees the webhook
-  secret.
+  cannot present Google credentials), but its ingress only admits traffic
+  arriving through the load balancer — the `run.app` URL answers nothing.
+  Each identity in the system gets the smallest role that works, and the
+  session driver never sees the webhook secret.
 - Destroying the Twilio number resource releases the number permanently,
   so it carries `prevent_destroy`.
