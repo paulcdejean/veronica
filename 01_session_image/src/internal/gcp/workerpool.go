@@ -11,9 +11,8 @@ import (
 // is being driven, zero between calls.
 func ScaleWorkerPool(ctx context.Context, pool string, instances int) error {
 	_, err := apiCall(ctx, http.MethodPatch,
-		"https://run.googleapis.com/v2/"+pool+"?updateMask=scaling",
+		"https://run.googleapis.com/v2/"+pool+"?updateMask=scaling.manualInstanceCount",
 		map[string]any{"scaling": map[string]any{
-			"scalingMode":         "MANUAL",
 			"manualInstanceCount": instances,
 		}})
 	return err

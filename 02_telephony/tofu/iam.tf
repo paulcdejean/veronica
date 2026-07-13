@@ -18,7 +18,9 @@ resource "google_secret_manager_secret_iam_member" "session_reads_key" {
 
 # Both ends of the pool's lifecycle scale it — the webhook up on dispatch,
 # the driver down when the line goes quiet. developer is the smallest
-# predefined role carrying workerpools.update, scoped to just this pool.
+# predefined role carrying workerpools.update, scoped to just this pool;
+# scaling is a deploy-shaped update, so the callers additionally need
+# actAs on the pool's service identity (below).
 resource "google_cloud_run_v2_worker_pool_iam_member" "webhook_scales_session" {
   location = local.workspace.region
   name     = google_cloud_run_v2_worker_pool.session.name
@@ -31,6 +33,21 @@ resource "google_cloud_run_v2_worker_pool_iam_member" "session_scales_itself" {
   name     = google_cloud_run_v2_worker_pool.session.name
   role     = "roles/run.developer"
   member   = "serviceAccount:${google_service_account.session.email}"
+}
+
+# Updating a worker pool — scaling included — requires actAs on its
+# service identity, and being an identity does not imply actAs on
+# yourself, so the driver needs this grant as much as the webhook does.
+resource "google_service_account_iam_member" "webhook_acts_as_session" {
+  service_account_id = google_service_account.session.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.webhook.email}"
+}
+
+resource "google_service_account_iam_member" "session_acts_as_itself" {
+  service_account_id = google_service_account.session.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.session.email}"
 }
 
 # The handoff: the webhook writes calls, the driver takes them.
