@@ -53,9 +53,11 @@ resource "google_cloudfunctions2_function" "webhook" {
 
       # The handoff: where dispatched calls go, and whose pool to wake.
       # The persona lives with the session driver now — the driver is what
-      # accepts calls.
-      CALL_TOPIC          = google_pubsub_topic.calls.id
-      SESSION_WORKER_POOL = google_cloud_run_v2_worker_pool.session.id
+      # accepts calls. Scaling updates must name the pool's identity (see
+      # the webhook's gcp.ScaleWorkerPool), hence the service account.
+      CALL_TOPIC              = google_pubsub_topic.calls.id
+      SESSION_WORKER_POOL     = google_cloud_run_v2_worker_pool.session.id
+      SESSION_SERVICE_ACCOUNT = google_service_account.session.email
 
       # Names of the Secret Manager secrets, not their values: the function
       # reads the latest versions at runtime, so the values never pass

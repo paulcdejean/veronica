@@ -26,6 +26,17 @@ func ProjectID(ctx context.Context) (string, error) {
 	return string(bytes.TrimSpace(body)), nil
 }
 
+// ServiceAccountEmail reads the workload's own service account from the
+// metadata server — for the driver this is also the pool's template
+// identity, which scaling updates must name.
+func ServiceAccountEmail(ctx context.Context) (string, error) {
+	body, err := metadataGet(ctx, "instance/service-accounts/default/email")
+	if err != nil {
+		return "", err
+	}
+	return string(bytes.TrimSpace(body)), nil
+}
+
 // AccessToken returns an OAuth token for the workload's service account.
 func AccessToken(ctx context.Context) (string, error) {
 	body, err := metadataGet(ctx, "instance/service-accounts/default/token")

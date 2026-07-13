@@ -28,9 +28,12 @@ type Config struct {
 
 	// CallTopic (projects/*/topics/*) carries the handoff to the driver;
 	// SessionWorkerPool (projects/*/locations/*/workerPools/*) is the
-	// driver's pool, scaled up when a call is dispatched.
-	CallTopic         string
-	SessionWorkerPool string
+	// driver's pool, scaled up when a call is dispatched, and
+	// SessionServiceAccount is that pool's identity, which the scaling
+	// update must name.
+	CallTopic             string
+	SessionWorkerPool     string
+	SessionServiceAccount string
 
 	APIKeySecret        string
 	WebhookSecretSecret string
@@ -41,11 +44,12 @@ type Config struct {
 // secret values themselves may not exist until first rotated in.
 func ConfigFromEnv() Config {
 	return Config{
-		OpenAIProjectID:     os.Getenv("OPENAI_PROJECT_ID"),
-		CallTopic:           os.Getenv("CALL_TOPIC"),
-		SessionWorkerPool:   os.Getenv("SESSION_WORKER_POOL"),
-		APIKeySecret:        os.Getenv("OPENAI_API_KEY_SECRET"),
-		WebhookSecretSecret: os.Getenv("OPENAI_WEBHOOK_SECRET_SECRET"),
+		OpenAIProjectID:       os.Getenv("OPENAI_PROJECT_ID"),
+		CallTopic:             os.Getenv("CALL_TOPIC"),
+		SessionWorkerPool:     os.Getenv("SESSION_WORKER_POOL"),
+		SessionServiceAccount: os.Getenv("SESSION_SERVICE_ACCOUNT"),
+		APIKeySecret:          os.Getenv("OPENAI_API_KEY_SECRET"),
+		WebhookSecretSecret:   os.Getenv("OPENAI_WEBHOOK_SECRET_SECRET"),
 	}
 }
 
@@ -137,7 +141,7 @@ func (h *Handler) openaiWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "handoff failed", http.StatusInternalServerError)
 		return
 	}
-	if err := gcp.ScaleWorkerPool(ctx, h.cfg.SessionWorkerPool, 1); err != nil {
+	if err := gcp.ScaleWorkerPool(ctx, h.cfg.SessionWorkerPool, h.cfg.SessionServiceAccount, 1); err != nil {
 		log.Printf("scaling the session pool for call %s: %v", event.Data.CallID, err)
 		http.Error(w, "handoff failed", http.StatusInternalServerError)
 		return

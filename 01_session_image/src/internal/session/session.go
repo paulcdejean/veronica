@@ -258,7 +258,13 @@ func scaleDown(cfg Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	if err := gcp.ScaleWorkerPool(ctx, cfg.WorkerPool, 0); err != nil {
+	// The driver runs as the pool's identity, which scaling must name.
+	identity, err := gcp.ServiceAccountEmail(ctx)
+	if err != nil {
+		log.Printf("reading own identity for scale-down: %v", err)
+		return
+	}
+	if err := gcp.ScaleWorkerPool(ctx, cfg.WorkerPool, identity, 0); err != nil {
 		log.Printf("scaling the pool down: %v", err)
 		return
 	}
@@ -268,7 +274,7 @@ func scaleDown(cfg Config) {
 		return
 	}
 	nack(ctx, cfg.Subscription, message)
-	if err := gcp.ScaleWorkerPool(ctx, cfg.WorkerPool, 1); err != nil {
+	if err := gcp.ScaleWorkerPool(ctx, cfg.WorkerPool, identity, 1); err != nil {
 		log.Printf("scaling the pool back up for a late call: %v", err)
 		return
 	}
