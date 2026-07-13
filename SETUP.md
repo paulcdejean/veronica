@@ -1,31 +1,68 @@
-# From a successful apply to a phone call
+# From tofu init to a phone call
 
-Everything below assumes `tofu apply` has completed in all three layers
-(see README.md). `tofu output` commands run from `02_telephony/tofu/`.
+This walks the whole deployment in order. It assumes the credentials from
+README.md's prerequisites are set up, and that in each layer's `tofu/`
+directory you have run `tofu init` and selected the workspace
+(`tofu workspace new veronica` the first time, `tofu workspace select
+veronica` after).
 
-## 1. Create the OpenAI webhook endpoint
+## 1. Apply 00_contacts
+
+```bash
+cd 00_contacts/tofu
+tofu apply
+```
+
+Creates one empty `voice-contact-*` project metadata entry per name in
+`allowed_callers.txt` (repo root, one name per line).
+
+## 2. Fill in the caller numbers
+
+Open `tofu output -raw contacts_console_url` and give each
+`voice-contact-*` entry the caller's number in E.164 form
+(`+15125551234`). A number's presence is what authorizes the caller;
+edits take effect on the next call, no apply.
+
+## 3. Apply 01_session_image
+
+```bash
+cd ../../01_session_image/tofu
+tofu apply
+```
+
+Builds and pushes the session driver's image via Cloud Build (the apply
+blocks until the build succeeds), and creates the two — still empty —
+Secret Manager secrets the next steps fill.
+
+## 4. Create the OpenAI webhook endpoint
 
 On <https://platform.openai.com>, in the project named by
-`openai_project_id`:
+`openai_project_id` in `02_telephony/tofu/workspace.tf`:
 
 1. Make sure billing is enabled (the Realtime API bills per token).
-2. Under **Settings → Project → Webhooks**, create an endpoint with the URL
-   from `tofu output -raw openai_webhook_url`, subscribed to the
-   `realtime.call.incoming` event. The hostname is the fixed
-   `voice.veronica-agent.com` front door, so this endpoint never needs
-   editing again.
-3. Copy the endpoint's signing secret (`whsec_...`) — it is stored in
-   step 3.
+2. Under **Settings → Project → Webhooks**, create an endpoint subscribed
+   to the `realtime.call.incoming` event, with the URL
+   `https://<voice_hostname>/openai-webhook` — for the veronica workspace
+   that is:
 
-## 2. Create the API key
+   ```
+   https://voice.veronica-agent.com/openai-webhook
+   ```
+
+   The hostname is a fixed front door we own, which is why this works
+   before the telephony layer even exists — and why this endpoint never
+   needs editing again.
+3. Copy the endpoint's signing secret (`whsec_...`) for step 6.
+
+## 5. Create the OpenAI API key
 
 Under **API keys**, create a key scoped to the same project. The webhook
 function uses it to accept/reject calls; the session driver uses it to
 attach the call's WebSocket and to hang up.
 
-## 3. Add the secret versions
+## 6. Add the secret versions
 
-The two secrets go straight from your terminal to Secret Manager via
+The two values go straight from your terminal to Secret Manager via
 gcloud — never through OpenTofu. `read -rs` keeps the pasted value out of
 shell history; each command waits silently for a paste + enter:
 
@@ -39,18 +76,23 @@ read -rs SECRET && printf '%s' "$SECRET" | \
     --project untrusted-agent --data-file=-
 ```
 
-Both programs read the `latest` version at runtime, so this step happens
-once and rotation is just another `versions add` (the webhook function
-picks a rotation up on its next cold start).
+Both programs read the `latest` version at runtime, so rotation later is
+just another `versions add` (the webhook function picks it up on its next
+cold start).
 
-## 4. Fill in the caller numbers
+## 7. Apply 02_telephony
 
-If you have not already: open `tofu output -raw contacts_console_url` and
-give each `voice-contact-*` entry the caller's number in E.164 form
-(`+15125551234`). A number's presence is what authorizes the caller, and
-edits take effect on the next call.
+```bash
+cd ../../02_telephony/tofu
+tofu apply
+```
 
-## 5. Call the number
+Deploys the webhook function and session job, stands up the load balancer
+and certificate behind `voice.veronica-agent.com` (the managed cert takes
+a few minutes to provision on the first apply), and points the Twilio
+number at the front door. When this apply finishes the system is live.
+
+## 8. Call the number
 
 Call `tofu output -raw twilio_phone_number` from an allowlisted phone.
 Veronica speaks the greeting a few seconds after pickup (the session

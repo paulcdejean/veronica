@@ -58,8 +58,8 @@ resource "google_cloudfunctions2_function" "webhook" {
       # Names of the Secret Manager secrets, not their values: the function
       # reads the latest versions at runtime, so the values never pass
       # through OpenTofu and a first deploy works before they are set.
-      OPENAI_API_KEY_SECRET        = google_secret_manager_secret.openai_api_key.secret_id
-      OPENAI_WEBHOOK_SECRET_SECRET = google_secret_manager_secret.openai_webhook_secret.secret_id
+      OPENAI_API_KEY_SECRET        = data.google_secret_manager_secret.openai_api_key.secret_id
+      OPENAI_WEBHOOK_SECRET_SECRET = data.google_secret_manager_secret.openai_webhook_secret.secret_id
     }
   }
 

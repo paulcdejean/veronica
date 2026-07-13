@@ -1,17 +1,17 @@
 resource "google_secret_manager_secret_iam_member" "webhook_reads_key" {
-  secret_id = google_secret_manager_secret.openai_api_key.secret_id
+  secret_id = data.google_secret_manager_secret.openai_api_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.webhook.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "webhook_reads_webhook_secret" {
-  secret_id = google_secret_manager_secret.openai_webhook_secret.secret_id
+  secret_id = data.google_secret_manager_secret.openai_webhook_secret.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.webhook.email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "session_reads_key" {
-  secret_id = google_secret_manager_secret.openai_api_key.secret_id
+  secret_id = data.google_secret_manager_secret.openai_api_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.session.email}"
 }

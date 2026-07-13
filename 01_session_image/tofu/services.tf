@@ -4,6 +4,7 @@ resource "google_project_service" "services" {
     "cloudbuild.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
+    "secretmanager.googleapis.com",
     "storage.googleapis.com",
   ])
 

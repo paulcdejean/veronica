@@ -36,9 +36,11 @@ conventions from `lightning`, each layer a `tofu/` root module beside the
 - `00_contacts` owns the caller directory: one `voice-contact-*` project
   metadata entry per name in `allowed_callers.txt`, the numbers typed into
   the Cloud console so they never enter the repo.
-- `01_session_image` owns the session driver's container image: an
-  Artifact Registry repository and a `terraform_data` provisioner that
-  runs Cloud Build whenever the source changes.
+- `01_session_image` owns what `02_telephony` needs to pre-exist: the
+  session driver's container image (an Artifact Registry repository and a
+  `terraform_data` provisioner that runs Cloud Build whenever the source
+  changes) and the two empty Secret Manager secrets, so their values can
+  be in place before the telephony apply.
 - `02_telephony` owns everything a call touches: the webhook function, the
   session job (pinned to the digest behind the image's `:latest`), the two
   OpenAI secrets, IAM, and the Twilio number.
@@ -61,39 +63,12 @@ conventions from `lightning`, each layer a `tofu/` root module beside the
 
 ## Deploy
 
-Layers apply in order, each from its `tofu/` directory (if the `veronica`
-workspace already exists, `tofu workspace select veronica` instead of
-`new`):
-
-```bash
-cd 00_contacts/tofu
-tofu init
-tofu workspace new veronica
-tofu apply
-```
-
-Add each allowed caller's name to `allowed_callers.txt` at the repo root
-(one name per line); the apply creates one empty `voice-contact-*` metadata
-entry per name. Then open the printed `contacts_console_url` and fill in
-each caller's phone number (E.164, for example `+15125551234`).
-
-```bash
-cd ../../01_session_image/tofu
-tofu init
-tofu workspace new veronica
-tofu apply   # runs Cloud Build; finishes with the image pushed
-```
-
-```bash
-cd ../../02_telephony/tofu
-tofu init
-tofu workspace new veronica
-tofu apply
-```
-
-After the applies, follow [SETUP.md](SETUP.md): it covers the OpenAI
-console steps (webhook endpoint, API key) and adding the two secret
-versions with gcloud, through to a working phone call.
+[SETUP.md](SETUP.md) walks the whole deployment in order — the three
+applies interleaved with the console steps (caller numbers, the OpenAI
+webhook endpoint and API key, the secret versions) — from `tofu init`
+through a working phone call. The short version: apply `00_contacts`, fill
+in numbers, apply `01_session_image`, do the OpenAI steps against the
+fixed hostname, apply `02_telephony`, call.
 
 ## How a call works
 

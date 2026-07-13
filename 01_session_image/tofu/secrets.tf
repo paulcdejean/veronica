@@ -1,6 +1,8 @@
 # Containers only: the values are added as versions with gcloud (see
 # SETUP.md) and read at runtime, so the OpenAI key and webhook secret never
-# appear in OpenTofu variables or state.
+# appear in OpenTofu variables or state. They live in this layer, a step
+# before their consumers in 02_telephony, so the versions can be in place
+# before the telephony apply — when it finishes, the system is callable.
 
 resource "google_secret_manager_secret" "openai_api_key" {
   secret_id = "${tofu.workspace}-openai-api-key"

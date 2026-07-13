@@ -16,3 +16,13 @@ data "google_artifact_registry_docker_image" "session" {
 data "google_service_account" "build" {
   account_id = "voice-build-${tofu.workspace}"
 }
+
+# The secret containers are owned by 01_session_image too, so their values
+# can be in place (SETUP.md) before this layer deploys their consumers.
+data "google_secret_manager_secret" "openai_api_key" {
+  secret_id = "${tofu.workspace}-openai-api-key"
+}
+
+data "google_secret_manager_secret" "openai_webhook_secret" {
+  secret_id = "${tofu.workspace}-openai-webhook-secret"
+}
