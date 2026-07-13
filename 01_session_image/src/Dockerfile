@@ -7,6 +7,6 @@ RUN CGO_ENABLED=0 go build -trimpath -o /session .
 
 # distroless static carries the CA certificates the TLS connections to
 # OpenAI and the Google APIs need; scratch does not.
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /session /session
 ENTRYPOINT ["/session"]
