@@ -2,8 +2,8 @@
 # name, the lightning way of referencing across layers. If that layer has
 # not been applied (no repository, or no successfully built :latest image),
 # this read fails and stops the plan — apply 01_session_image first. The
-# job pins the digest behind :latest, so a rebuilt image rolls the job on
-# the next apply here.
+# worker pool pins the digest behind :latest, so a rebuilt image rolls the
+# pool on the next apply here.
 data "google_artifact_registry_docker_image" "session" {
   location      = local.workspace.region
   repository_id = tofu.workspace

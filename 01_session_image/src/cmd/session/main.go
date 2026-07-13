@@ -1,23 +1,24 @@
-// Command session is Veronica's session driver: one Cloud Run job execution
-// per phone call.
+// Command session is Veronica's session driver: a Cloud Run worker pool
+// instance that exists only while a phone call does.
 //
-// The telephony layer's webhook function accepts the call with OpenAI and
-// starts an execution of this job with CALL_ID and CALLER set. The driver
-// attaches the call's sideband WebSocket (a control channel — the audio
-// flows Twilio<->OpenAI directly), speaks the greeting, and then holds the
-// socket for the life of the call. When the call ends OpenAI closes the
-// socket and this process exits, which completes the job execution — the
-// driver's lifetime is the call's.
+// The telephony layer's webhook function screens each incoming call,
+// publishes {call_id, caller} to the handoff subscription, and scales this
+// pool from zero to one. This process boots in seconds, pulls the call,
+// and picks it up: the accept (which stops the caller's ringing) and the
+// sideband WebSocket attach both happen here, so the driver is on the line
+// for the call's entire life — the audio itself flows Twilio<->OpenAI
+// directly. When the call ends and no other is pending, the driver scales
+// the pool back to zero, ending its own provisioning.
 //
 // The work is split across the internal packages: realtime is the OpenAI
-// sideband client, gcp is the Google Cloud plumbing, and session is the
-// driver's actual flow. This command only turns the environment into a
-// session.Config and runs it.
+// client, gcp is the Google Cloud plumbing, and session is the driver's
+// actual flow. This command only turns the environment into a
+// session.Config and serves it.
 package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -34,25 +35,39 @@ func main() {
 		log.Fatalf("session driver failed: %v", err)
 	}
 
-	// SIGTERM means the execution is being cancelled from outside; exit
-	// without hanging up — the call can survive losing its driver.
+	// SIGTERM means the pool is scaling down — normally by this process's
+	// own hand after the line went quiet. Exit without hanging up; a call
+	// can survive losing its driver.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
-	if err := session.Run(ctx, cfg); err != nil {
+	if err := session.Serve(ctx, cfg); err != nil {
 		log.Fatalf("session driver failed: %v", err)
 	}
 }
 
 func configFromEnv() (session.Config, error) {
 	cfg := session.Config{
-		CallID:   os.Getenv("CALL_ID"),
-		Caller:   os.Getenv("CALLER"),
-		APIKey:   os.Getenv("OPENAI_API_KEY"),
-		Greeting: os.Getenv("VOICE_GREETING"),
+		APIKey:       os.Getenv("OPENAI_API_KEY"),
+		Greeting:     os.Getenv("VOICE_GREETING"),
+		Model:        os.Getenv("VOICE_MODEL"),
+		Voice:        os.Getenv("VOICE_VOICE"),
+		Instructions: os.Getenv("VOICE_INSTRUCTIONS"),
+		Subscription: os.Getenv("CALL_SUBSCRIPTION"),
+		WorkerPool:   os.Getenv("WORKER_POOL"),
 	}
-	if cfg.CallID == "" || cfg.Caller == "" || cfg.APIKey == "" || cfg.Greeting == "" {
-		return session.Config{}, errors.New("CALL_ID, CALLER, OPENAI_API_KEY and VOICE_GREETING must all be set")
+	for name, value := range map[string]string{
+		"OPENAI_API_KEY":     cfg.APIKey,
+		"VOICE_GREETING":     cfg.Greeting,
+		"VOICE_MODEL":        cfg.Model,
+		"VOICE_VOICE":        cfg.Voice,
+		"VOICE_INSTRUCTIONS": cfg.Instructions,
+		"CALL_SUBSCRIPTION":  cfg.Subscription,
+		"WORKER_POOL":        cfg.WorkerPool,
+	} {
+		if value == "" {
+			return session.Config{}, fmt.Errorf("%s must be set", name)
+		}
 	}
 	return cfg, nil
 }

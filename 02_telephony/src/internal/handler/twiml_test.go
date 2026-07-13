@@ -7,7 +7,7 @@ import (
 
 func TestTwimlBody(t *testing.T) {
 	want := `<?xml version="1.0" encoding="UTF-8"?>` +
-		`<Response><Dial answerOnBridge="true">` +
+		`<Response><Dial answerOnBridge="true" timeout="60">` +
 		`<Sip>sip:proj_123@sip.api.openai.com;transport=tls</Sip>` +
 		`</Dial></Response>`
 	if got := twimlBody("proj_123"); got != want {

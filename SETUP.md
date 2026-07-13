@@ -87,26 +87,27 @@ cd ../../02_telephony/tofu
 tofu apply
 ```
 
-Deploys the webhook function and session job, stands up the load balancer
-and certificate behind `voice.veronica-agent.com` (the managed cert takes
-a few minutes to provision on the first apply), and points the Twilio
-number at the front door. When this apply finishes the system is live.
+Deploys the webhook function and the session-driver worker pool, stands up
+the load balancer and certificate behind `voice.veronica-agent.com` (the
+managed cert takes a few minutes to provision on the first apply), and
+points the Twilio number at the front door. When this apply finishes the
+system is live.
 
 ## 8. Call the number
 
-Call `tofu output -raw twilio_phone_number` from an allowlisted phone.
-Veronica speaks the greeting a few seconds after pickup (the session
-driver's container is starting); hang up to end the call.
+Call `tofu output -raw twilio_phone_number` from an allowlisted phone. You
+hear ringing while the session driver's container starts — the driver is
+what picks up — then Veronica's greeting. Hang up to end the call.
 
 If the call does not connect, check in order:
 
 ```bash
-# Did the webhook arrive, and was the call accepted or rejected?
+# Did the webhook arrive, and was the call dispatched or rejected?
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="veronica-webhook"' \
   --project untrusted-agent --freshness 1h --order asc --format 'value(text_payload)'
 
-# Did the session driver start, attach, and greet?
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="veronica-session"' \
+# Did the driver start, pick up, attach, and greet?
+gcloud logging read 'resource.type="cloud_run_worker_pool" AND resource.labels.worker_pool_name="veronica-session"' \
   --project untrusted-agent --freshness 1h --order asc --format 'value(text_payload)'
 ```
 
@@ -118,7 +119,9 @@ gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name=
   does not match the endpoint's signing secret.
 - `not in allowlist`: the metadata value is missing, malformed, or not the
   number you are calling from.
-- Accepted but no greeting: the second log command shows whether the
-  driver's execution started and what the Realtime session reported; the
-  call itself still works (speak first and Veronica answers) even with the
-  driver down.
+- Dispatched but it rings until the line drops: the second log command
+  shows how far the driver got — the pull, the pickup, the attach, and
+  what the Realtime session reported. If the pool sticks scaled up with no
+  call (`tofu output -raw session_pool_command | bash` to check), scale it
+  down: `gcloud run worker-pools update veronica-session --instances 0
+  --region us-central1 --project untrusted-agent`.

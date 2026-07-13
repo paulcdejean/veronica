@@ -10,15 +10,10 @@ import (
 	"strings"
 )
 
-// AcceptCall answers realtime.call.incoming by attaching a session
-// configuration ({"type": "realtime", "model": ..., "instructions": ...})
-// to the call; OpenAI then bridges the audio.
-func AcceptCall(ctx context.Context, apiKey, callID string, session map[string]any) error {
-	return callControl(ctx, apiKey, callID, "accept", session)
-}
-
 // RejectCall declines the call with a SIP status code (603 is a plain
-// decline).
+// decline). Accepting happens in the session driver, which owns the call
+// from its first moment; rejecting stays here because spinning a container
+// up to say no would be absurd.
 func RejectCall(ctx context.Context, apiKey, callID string, statusCode int) error {
 	return callControl(ctx, apiKey, callID, "reject", map[string]any{"status_code": statusCode})
 }

@@ -5,8 +5,10 @@
 package realtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +17,41 @@ import (
 
 	"github.com/coder/websocket"
 )
+
+// ErrCallNotFound reports that the call id no longer names a live call:
+// the caller hung up, or the SIP leg stopped ringing, before we got here.
+var ErrCallNotFound = errors.New("call not found")
+
+// Accept answers an incoming call, configuring the Realtime session that
+// runs it ({"type": "realtime", "model": ..., "instructions": ...}); the
+// caller's ringing stops and the audio bridges once this returns.
+func Accept(ctx context.Context, apiKey, callID string, session map[string]any) error {
+	body, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.openai.com/v1/realtime/calls/"+url.PathEscape(callID)+"/accept",
+		bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+apiKey)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound {
+		return ErrCallNotFound
+	}
+	if response.StatusCode >= 300 {
+		detail, _ := io.ReadAll(response.Body)
+		return fmt.Errorf("accept: %d %s", response.StatusCode, detail)
+	}
+	return nil
+}
 
 // Conn is the sideband WebSocket attached to one call. It carries JSON
 // events both ways; the audio flows elsewhere (Twilio<->OpenAI over SIP).

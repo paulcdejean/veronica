@@ -6,6 +6,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -17,23 +18,19 @@ import (
 )
 
 // Config is everything the handler takes from its deployment, gathered in
-// one place. The persona fields come from the tofu workspace configuration;
-// the *Secret fields are Secret Manager secret names, never values — the
-// values exist only as secret versions added with gcloud.
+// one place. The *Secret fields are Secret Manager secret names, never
+// values — the values exist only as secret versions added with gcloud.
+// The persona lives with the session driver, which is what accepts calls.
 type Config struct {
 	// OpenAIProjectID is the user part of the SIP URI the call is handed
 	// to — an id, not a credential.
 	OpenAIProjectID string
 
-	// Model, Voice and Instructions configure the Realtime session on
-	// accept; Instructions is Veronica's entire system prompt.
-	Model        string
-	Voice        string
-	Instructions string
-
-	// SessionJob is the fully qualified Cloud Run job
-	// (projects/*/locations/*/jobs/*) run once per accepted call.
-	SessionJob string
+	// CallTopic (projects/*/topics/*) carries the handoff to the driver;
+	// SessionWorkerPool (projects/*/locations/*/workerPools/*) is the
+	// driver's pool, scaled up when a call is dispatched.
+	CallTopic         string
+	SessionWorkerPool string
 
 	APIKeySecret        string
 	WebhookSecretSecret string
@@ -45,10 +42,8 @@ type Config struct {
 func ConfigFromEnv() Config {
 	return Config{
 		OpenAIProjectID:     os.Getenv("OPENAI_PROJECT_ID"),
-		Model:               os.Getenv("VOICE_MODEL"),
-		Voice:               os.Getenv("VOICE_VOICE"),
-		Instructions:        os.Getenv("VOICE_INSTRUCTIONS"),
-		SessionJob:          os.Getenv("SESSION_JOB"),
+		CallTopic:           os.Getenv("CALL_TOPIC"),
+		SessionWorkerPool:   os.Getenv("SESSION_WORKER_POOL"),
 		APIKeySecret:        os.Getenv("OPENAI_API_KEY_SECRET"),
 		WebhookSecretSecret: os.Getenv("OPENAI_WEBHOOK_SECRET_SECRET"),
 	}
@@ -124,30 +119,29 @@ func (h *Handler) openaiWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("inbound call accepted from %s (%s)", caller, event.Data.CallID)
-	err = openai.AcceptCall(ctx, apiKey, event.Data.CallID, map[string]any{
-		"type":         "realtime",
-		"model":        h.cfg.Model,
-		"instructions": h.cfg.Instructions,
-		"audio":        map[string]any{"output": map[string]any{"voice": h.cfg.Voice}},
+	// The driver is what picks up: publish the call and scale the pool from
+	// zero, and the starting instance pulls the message, accepts, and holds
+	// the line — attached from the call's first moment, so nothing escapes
+	// the transcript. Until then the caller just hears ringing, and a
+	// failure here means OpenAI retries the whole (idempotent) webhook.
+	handoff, err := json.Marshal(map[string]string{
+		"call_id": event.Data.CallID,
+		"caller":  caller,
 	})
 	if err != nil {
-		log.Printf("accept failed: %v", err)
-		http.Error(w, "accept failed", http.StatusInternalServerError)
+		http.Error(w, "handoff failed", http.StatusInternalServerError)
 		return
 	}
-
-	// The session driver greets and holds the call; if it fails to start,
-	// the call still works (audio is Twilio<->OpenAI), just without a
-	// greeting, tools, or mid-call allowlist enforcement.
-	execution, err := gcp.RunJob(ctx, h.cfg.SessionJob, map[string]string{
-		"CALL_ID": event.Data.CallID,
-		"CALLER":  caller,
-	})
-	if err != nil {
-		log.Printf("session driver failed to start for call %s: %v", event.Data.CallID, err)
-	} else {
-		log.Printf("session driver started for call %s (%s)", event.Data.CallID, execution)
+	if err := gcp.Publish(ctx, h.cfg.CallTopic, handoff); err != nil {
+		log.Printf("publishing call %s: %v", event.Data.CallID, err)
+		http.Error(w, "handoff failed", http.StatusInternalServerError)
+		return
 	}
-	fmt.Fprint(w, "accepted")
+	if err := gcp.ScaleWorkerPool(ctx, h.cfg.SessionWorkerPool, 1); err != nil {
+		log.Printf("scaling the session pool for call %s: %v", event.Data.CallID, err)
+		http.Error(w, "handoff failed", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("call %s from %s dispatched to the session driver", event.Data.CallID, caller)
+	fmt.Fprint(w, "dispatched")
 }

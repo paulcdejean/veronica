@@ -16,14 +16,34 @@ resource "google_secret_manager_secret_iam_member" "session_reads_key" {
   member    = "serviceAccount:${google_service_account.session.email}"
 }
 
-# Executing a job with per-execution overrides (the call id) requires more
-# than run.invoker; developer is the smallest predefined role that carries
-# it, scoped to just this job.
-resource "google_cloud_run_v2_job_iam_member" "webhook_runs_session" {
+# Both ends of the pool's lifecycle scale it — the webhook up on dispatch,
+# the driver down when the line goes quiet. developer is the smallest
+# predefined role carrying workerpools.update, scoped to just this pool.
+resource "google_cloud_run_v2_worker_pool_iam_member" "webhook_scales_session" {
   location = local.workspace.region
-  name     = google_cloud_run_v2_job.session.name
+  name     = google_cloud_run_v2_worker_pool.session.name
   role     = "roles/run.developer"
   member   = "serviceAccount:${google_service_account.webhook.email}"
+}
+
+resource "google_cloud_run_v2_worker_pool_iam_member" "session_scales_itself" {
+  location = local.workspace.region
+  name     = google_cloud_run_v2_worker_pool.session.name
+  role     = "roles/run.developer"
+  member   = "serviceAccount:${google_service_account.session.email}"
+}
+
+# The handoff: the webhook writes calls, the driver takes them.
+resource "google_pubsub_topic_iam_member" "webhook_publishes_calls" {
+  topic  = google_pubsub_topic.calls.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.webhook.email}"
+}
+
+resource "google_pubsub_subscription_iam_member" "session_pulls_calls" {
+  subscription = google_pubsub_subscription.calls.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${google_service_account.session.email}"
 }
 
 # The allowlist lives in the project's common instance metadata, which Cloud

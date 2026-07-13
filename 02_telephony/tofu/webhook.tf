@@ -49,11 +49,13 @@ resource "google_cloudfunctions2_function" "webhook" {
     ingress_settings = "ALLOW_INTERNAL_AND_GCLB"
 
     environment_variables = {
-      OPENAI_PROJECT_ID  = local.workspace.openai_project_id
-      VOICE_MODEL        = local.workspace.voice_model
-      VOICE_VOICE        = local.workspace.voice_voice
-      VOICE_INSTRUCTIONS = trimspace(local.workspace.voice_instructions)
-      SESSION_JOB        = "projects/${local.workspace.project_id}/locations/${local.workspace.region}/jobs/${google_cloud_run_v2_job.session.name}"
+      OPENAI_PROJECT_ID = local.workspace.openai_project_id
+
+      # The handoff: where dispatched calls go, and whose pool to wake.
+      # The persona lives with the session driver now — the driver is what
+      # accepts calls.
+      CALL_TOPIC          = google_pubsub_topic.calls.id
+      SESSION_WORKER_POOL = google_cloud_run_v2_worker_pool.session.id
 
       # Names of the Secret Manager secrets, not their values: the function
       # reads the latest versions at runtime, so the values never pass

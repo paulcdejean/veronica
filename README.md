@@ -6,16 +6,22 @@ answers the call and hands it to OpenAI's Realtime API over SIP;
 does the talking. Two small Go programs on Google Cloud run the show:
 
 - The **webhook function** (Cloud Run function, `02_telephony/src`) plays
-  receptionist: it tells Twilio where to send the call, and when OpenAI
-  asks "should I take this?" it checks the caller against the allowlist
-  and answers with Veronica's persona.
-- The **session driver** (Cloud Run job, `01_session_image/src`) runs one
-  execution per call: it attaches the call's WebSocket, speaks the
-  greeting, and holds the socket for the whole call — re-checking the
-  allowlist (a removed caller is hung up on within a minute) and, soon,
-  handling tool calls. When the call ends the process exits and the
-  execution completes: the container's lifetime is the call's, so nothing
-  runs between calls.
+  switchboard: it tells Twilio where to ring the call, and when OpenAI
+  asks "should I take this?" it checks the caller against the allowlist —
+  rejecting strangers, and dispatching known callers to the driver (a
+  Pub/Sub message plus scaling the driver's pool from zero). It never
+  answers the call itself.
+- The **session driver** (Cloud Run worker pool, `01_session_image/src`)
+  is what picks up. Its pool idles at zero instances; when the webhook
+  scales it to one, the starting instance pulls the dispatched call,
+  accepts it with Veronica's persona (ringing stops here), attaches the
+  call's WebSocket, speaks the greeting, and holds the socket for the
+  whole call — re-checking the allowlist (a removed caller is hung up on
+  within a minute) and, soon, handling tool calls. Because the driver owns
+  the call from its first moment, nothing will escape the transcript when
+  transcript logging lands. When the call ends the driver scales the pool
+  back to zero: the container's lifetime is the call's, and nothing runs
+  between calls.
 
 Audio never touches either program — it flows Twilio↔OpenAI directly.
 
@@ -42,16 +48,17 @@ conventions from `lightning`, each layer a `tofu/` root module beside the
   changes) and the two empty Secret Manager secrets, so their values can
   be in place before the telephony apply.
 - `02_telephony` owns everything a call touches: the webhook function, the
-  session job (pinned to the digest behind the image's `:latest`), the two
-  OpenAI secrets, IAM, and the Twilio number.
+  session worker pool (pinned to the digest behind the image's `:latest`),
+  the call-handoff Pub/Sub topic, the two OpenAI secrets, IAM, and the
+  Twilio number.
 
 Each `src/` is its own Go module with the same shape: a thin entry point
 (`cmd/session/main.go` for the job; `function.go` for the function, where
 the Functions Framework requires its registration) over `internal/`
 packages split by who they talk to — `realtime` and `openai` speak to the
 OpenAI platform, `gcp` is the Google Cloud plumbing (metadata, secrets,
-allowlist, job executions), and `session`/`handler` hold each program's
-actual flow. The `gcp` plumbing is deliberately duplicated between the two
+allowlist, Pub/Sub, pool scaling), and `session`/`handler` hold each
+program's actual flow. The `gcp` plumbing is deliberately duplicated between the two
 modules: each build ships only its own `src/`. The pure logic — signature
 verification, caller extraction, allowlist parsing, TwiML — has table
 tests; `go test ./...` in either module runs them.
@@ -84,21 +91,27 @@ fixed hostname, apply `02_telephony`, call.
 ## How a call works
 
 1. Twilio answers the number and POSTs to the function's `/twiml` route,
-   which replies with `<Dial><Sip>` pointing at
+   which replies with `<Dial answerOnBridge timeout="60"><Sip>` pointing at
    `sip:<project>@sip.api.openai.com` — the call rings through to OpenAI
-   while the caller still hears ringing (`answerOnBridge`).
+   while the caller still hears ringing.
 2. OpenAI POSTs a signed `realtime.call.incoming` webhook to the function's
    `/openai-webhook` route. The function verifies the signature, reads the
    `voice-contact-*` project metadata, and rejects the call unless the
    caller's number matches an entry (presence of a number authorizes the
    caller).
-3. On accept, the function supplies the session — model, voice, and
-   Veronica's instructions, all set in `workspace.tf` — and starts one
-   execution of the session-driver job with the call's id.
-4. The driver attaches the call's WebSocket, waits a beat for the audio
-   path to bridge, and nudges Veronica into speaking the greeting first.
-   It then stays on the line until the call ends and the socket closes,
-   which ends the execution.
+3. A known caller is dispatched: the function publishes `{call_id,
+   caller}` to the handoff topic and scales the session pool from zero to
+   one. The caller keeps hearing ringing — nothing has answered yet.
+4. The driver instance starts (seconds, not the minutes a Cloud Run *job*
+   takes to schedule — that latency is why the pool exists), pulls the
+   call, and accepts it with the session config — model, voice, and
+   Veronica's instructions, all set in `workspace.tf`. The ringing stops:
+   this is the pickup. It attaches the call's WebSocket in the same
+   breath, waits a beat for the audio path to bridge, and nudges Veronica
+   into speaking the greeting first.
+5. The driver stays on the line until the call ends and the socket closes,
+   then scales the pool back to zero — unless another call was dispatched
+   in the meantime, which it picks up next.
 
 Changing a caller's number is a console metadata edit — it takes effect on
 the next call (and, for removals, on live calls within a minute). Adding or
@@ -106,21 +119,21 @@ removing a *name* means editing `allowed_callers.txt` and applying
 `00_contacts`. Changing the persona, voice, or model is an edit to
 `02_telephony/tofu/workspace.tf` and an apply there. Changing the session
 driver's code means applying `01_session_image` (which rebuilds the image)
-and then `02_telephony` (which rolls the job to the new digest).
+and then `02_telephony` (which rolls the pool to the new digest).
 
 ## Operations
 
 ```bash
-# The webhook function's logs (accepts, rejects, webhook failures):
+# The webhook function's logs (dispatches, rejects, webhook failures):
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="veronica-webhook"' \
   --project untrusted-agent --freshness 1h --order asc --format 'value(text_payload)'
 
-# The session driver's logs (greeting, session events, hangups):
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="veronica-session"' \
+# The session driver's logs (pickup, greeting, session events, hangups):
+gcloud logging read 'resource.type="cloud_run_worker_pool" AND resource.labels.worker_pool_name="veronica-session"' \
   --project untrusted-agent --freshness 1h --order asc --format 'value(text_payload)'
 
-# One job execution per call:
-tofu output -raw session_executions_command | bash
+# The pool's state (instance count 1 = a call is being driven):
+tofu output -raw session_pool_command | bash
 
 # Inspect the resolved outputs (from 02_telephony/tofu):
 tofu output

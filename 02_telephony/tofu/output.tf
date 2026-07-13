@@ -13,7 +13,7 @@ output "contacts_console_url" {
   description = "Edit the callers' phone numbers here, in the voice-contact-* keys (E.164, for example +15125551234)."
 }
 
-output "session_executions_command" {
-  value       = "gcloud run jobs executions list --job ${google_cloud_run_v2_job.session.name} --region ${local.workspace.region} --project ${local.workspace.project_id}"
-  description = "The session-driver job runs one execution per call; this lists them."
+output "session_pool_command" {
+  value       = "gcloud run worker-pools describe ${google_cloud_run_v2_worker_pool.session.name} --region ${local.workspace.region} --project ${local.workspace.project_id}"
+  description = "The session-driver pool; an instance count of 1 means a call is being driven, 0 means the line is quiet."
 }
