@@ -17,6 +17,11 @@ terraform {
       version = "0.18.46"
     }
 
+    time = {
+      source  = "hashicorp/time"
+      version = "0.14.0"
+    }
+
     # Permanent resident again: the voice hostname's DNS records and the
     # zone SSL setting live here. The Worker era's script and custom domain
     # are still in state with no config, so the first apply also destroys

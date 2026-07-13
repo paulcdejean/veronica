@@ -9,17 +9,27 @@ resource "google_certificate_manager_dns_authorization" "voice" {
   depends_on = [google_project_service.services]
 }
 
+locals {
+  # One full TTL for the challenge record to propagate before Certificate
+  # Manager validates against it; 60 seconds is also Cloudflare's minimum
+  # TTL under general circumstances.
+  acme_challenge_ttl_seconds = 60
+}
+
 # Must stay unproxied — Certificate Manager validates against this record.
 resource "cloudflare_dns_record" "acme_challenge" {
   zone_id = data.cloudflare_zone.voice.id
   name    = trimsuffix(google_certificate_manager_dns_authorization.voice.dns_resource_record[0].name, ".")
   type    = google_certificate_manager_dns_authorization.voice.dns_resource_record[0].type
   content = trimsuffix(google_certificate_manager_dns_authorization.voice.dns_resource_record[0].data, ".")
-  ttl     = 60
+  ttl     = local.acme_challenge_ttl_seconds
   proxied = false
+}
 
-  provisioner "local-exec" {
-    command = "sleep 60"
+resource "time_sleep" "acme_challenge_propagation" {
+  create_duration = "${local.acme_challenge_ttl_seconds}s"
+  triggers = {
+    record = cloudflare_dns_record.acme_challenge.id
   }
 }
 
@@ -31,7 +41,7 @@ resource "google_certificate_manager_certificate" "voice" {
     dns_authorizations = [google_certificate_manager_dns_authorization.voice.id]
   }
 
-  depends_on = [cloudflare_dns_record.acme_challenge]
+  depends_on = [time_sleep.acme_challenge_propagation]
 }
 
 # Global external ALBs can't reference Certificate Manager certs directly;
