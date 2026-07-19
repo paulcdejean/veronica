@@ -1,0 +1,77 @@
+// Veronica's Cloudflare deployable: the voice Worker (front door) and the
+// session-driver container it dispatches calls to. `wrangler deploy` from
+// this directory builds driver/Dockerfile, pushes it to Cloudflare's
+// registry, deploys the Worker, and claims the custom domain — the one
+// deploy verb for everything a call touches. OpenTofu (../tofu) owns what
+// exists outside the deploy: the contacts KV namespace and the Twilio
+// number.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "veronica-voice",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+
+  // The fixed front door: Twilio and OpenAI are configured against this
+  // hostname (write-once), and the custom domain terminates TLS at the
+  // edge — no load balancer, no origin.
+  "routes": [
+    {
+      "pattern": "voice.veronica-agent.com",
+      "custom_domain": true
+    }
+  ],
+
+  // One driver container per live call, addressed by call_id through the
+  // DRIVER Durable Object namespace. max_instances is a safety ceiling on
+  // concurrent calls, not warm capacity — zero calls is zero containers.
+  "containers": [
+    {
+      "class_name": "Driver",
+      "image": "./driver/Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 10
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DRIVER",
+        "class_name": "Driver"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Driver"]
+    }
+  ],
+
+  // The contacts namespace is created by ../tofu (which seeds one key per
+  // name in allowed_callers.txt); paste `tofu output -raw
+  // contacts_namespace_id` here after the first apply.
+  "kv_namespaces": [
+    {
+      "binding": "CONTACTS",
+      "id": "PASTE_CONTACTS_NAMESPACE_ID_HERE"
+    }
+  ],
+
+  // The persona and SIP destination. Not secrets — OPENAI_API_KEY and
+  // OPENAI_WEBHOOK_SECRET are uploaded with `wrangler secret put` (see
+  // SETUP.md) and never appear in the repo.
+  "vars": {
+    "OPENAI_PROJECT_ID": "proj_qnaIpxtc3PddMxEKQUeqry4O",
+    "VOICE_MODEL": "gpt-realtime-2.1-mini",
+    // Currently available voices: alloy, ash, ballad, coral, echo, sage,
+    // shimmer, verse, marin (female, recommended), cedar (male,
+    // recommended). fable, nova, and onyx are unavailable for realtime.
+    "VOICE_VOICE": "marin", // Steven's preference
+    "VOICE_GREETING": "Veronica speaking",
+    "VOICE_INSTRUCTIONS": "You are Veronica, an AI personal assistant."
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

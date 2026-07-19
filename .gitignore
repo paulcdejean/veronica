@@ -13,9 +13,11 @@ override.tf.json
 .wrangler/
 .terraform/
 
-# archive_file staging for the function source zip.
+# Wrangler's dry-run bundle output.
 dist/
 
-# Locally built session-driver binary (go build writes it into the cwd).
-01_session_image/src/session
-01_session_image/src/cmd/session/session
+node_modules/
+
+# Locally built driver binary (go build writes it into the cwd).
+app/driver/driver
+app/driver/cmd/driver/driver
