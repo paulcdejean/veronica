@@ -98,13 +98,3 @@ cd app && npm run tail
   dashboard under the worker's **Containers** tab, and a non-2xx dispatch
   makes OpenAI redeliver the webhook, so transient failures retry
   themselves.
-
-## Appendix: GCP-era leftovers
-
-The old roots (`00_contacts`, `01_session_image`, `02_telephony`) are gone
-from the repo; their remote state keys (`veronica/00_contacts` etc. in the
-R2 `tofu` bucket) are orphaned and can be deleted whenever — but never run
-a destroy from an old checkout: the `02_telephony` state still references
-the phone number this root now owns. On the GCP side, check for a
-lingering global static IP (`gcloud compute addresses list --project
-untrusted-agent`) — an unused reserved address bills by the hour.
