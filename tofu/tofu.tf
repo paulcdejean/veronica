@@ -11,6 +11,12 @@ terraform {
       source  = "twilio/twilio"
       version = "0.18.46"
     }
+
+    # Renders app/wrangler.jsonc from its template (see wrangler.tf).
+    local = {
+      source  = "hashicorp/local"
+      version = "2.9.0"
+    }
   }
 
   backend "s3" {

@@ -2,12 +2,16 @@
 // session-driver container it dispatches calls to. `wrangler deploy` from
 // this directory builds driver/Dockerfile, pushes it to Cloudflare's
 // registry, deploys the Worker, and claims the custom domain — the one
-// deploy verb for everything a call touches. OpenTofu (../tofu) owns what
-// exists outside the deploy: the contacts KV namespace and the Twilio
-// number.
+// deploy verb for everything a call touches.
+//
+// This is a template: ../tofu renders it to the gitignored wrangler.jsonc
+// on apply, filling in the workspace-specific values (worker name,
+// hostname, contacts namespace, persona) from workspace.tf — the same
+// template serves every workspace, and the namespace id never needs
+// hand-copying. Edit THIS file, never the generated one, and re-apply.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "veronica-voice",
+  "name": ${jsonencode("${workspace}-voice")},
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
 
@@ -16,7 +20,7 @@
   // edge — no load balancer, no origin.
   "routes": [
     {
-      "pattern": "voice.veronica-agent.com",
+      "pattern": ${jsonencode(voice_hostname)},
       "custom_domain": true
     }
   ],
@@ -47,28 +51,24 @@
     }
   ],
 
-  // The contacts namespace is created by ../tofu (which seeds one key per
-  // name in allowed_callers.txt); paste `tofu output -raw
-  // contacts_namespace_id` here after the first apply.
+  // The contacts namespace is created by ../tofu, which seeds one key per
+  // name in allowed_callers.txt and fills this id in at render time.
   "kv_namespaces": [
     {
       "binding": "CONTACTS",
-      "id": "PASTE_CONTACTS_NAMESPACE_ID_HERE"
+      "id": ${jsonencode(contacts_namespace_id)}
     }
   ],
 
-  // The persona and SIP destination. Not secrets — OPENAI_API_KEY and
-  // OPENAI_WEBHOOK_SECRET are uploaded with `wrangler secret put` (see
-  // SETUP.md) and never appear in the repo.
+  // The persona and SIP destination, from workspace.tf. Not secrets —
+  // OPENAI_API_KEY and OPENAI_WEBHOOK_SECRET are uploaded with `wrangler
+  // secret put` (see SETUP.md) and never appear in the repo.
   "vars": {
-    "OPENAI_PROJECT_ID": "proj_qnaIpxtc3PddMxEKQUeqry4O",
-    "VOICE_MODEL": "gpt-realtime-2.1-mini",
-    // Currently available voices: alloy, ash, ballad, coral, echo, sage,
-    // shimmer, verse, marin (female, recommended), cedar (male,
-    // recommended). fable, nova, and onyx are unavailable for realtime.
-    "VOICE_VOICE": "marin", // Steven's preference
-    "VOICE_GREETING": "Veronica speaking",
-    "VOICE_INSTRUCTIONS": "You are Veronica, an AI personal assistant."
+    "OPENAI_PROJECT_ID": ${jsonencode(openai_project_id)},
+    "VOICE_MODEL": ${jsonencode(voice_model)},
+    "VOICE_VOICE": ${jsonencode(voice_voice)},
+    "VOICE_GREETING": ${jsonencode(voice_greeting)},
+    "VOICE_INSTRUCTIONS": ${jsonencode(voice_instructions)}
   },
 
   "observability": {

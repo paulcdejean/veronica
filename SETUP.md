@@ -14,10 +14,13 @@ tofu apply
 ```
 
 Creates the contacts KV namespace (one empty key per name in
-`allowed_callers.txt`), sets the zone's SSL mode, and — first apply only —
-imports the existing Twilio phone number into this root's state (the
-`import` block in `twilio.tf`; releasing a number is permanent, so it is
-adopted, never recreated).
+`allowed_callers.txt`), sets the zone's SSL mode, renders the workspace's
+`app/wrangler.jsonc` from `app/wrangler.template.jsonc` (gitignored — the
+apply stitches in the namespace id, hostname, and persona, so nothing is
+hand-copied between the roots), and — first apply only — imports the
+existing Twilio phone number into this root's state (the `import` block in
+`twilio.tf`; releasing a number is permanent, so it is adopted, never
+recreated).
 
 ## 2. Fill in the caller numbers
 
@@ -26,21 +29,7 @@ caller's number in E.164 form (`+15125551234`). A number's presence is
 what authorizes the caller; edits take effect on the next call, no apply,
 no deploy.
 
-## 3. Point wrangler at the namespace
-
-Paste `tofu output -raw contacts_namespace_id` into `app/wrangler.jsonc`
-as the `CONTACTS` binding's `id`. This is a one-time stitch between the
-two roots; the namespace id never changes.
-
-## 4. Clear the GCP-era DNS record (transition only)
-
-The zone still has a `voice` record pointing at the demolished GCP load
-balancer. Delete it in the Cloudflare dashboard (DNS → records → `voice`)
-so the deploy in the next step can claim the hostname as a Workers custom
-domain. Skip this once it's gone — the custom domain manages its own DNS
-from then on.
-
-## 5. Deploy the app
+## 3. Deploy the app
 
 ```bash
 cd ../app
@@ -53,12 +42,12 @@ Cloudflare's registry, deploys the Worker, and claims
 `voice.veronica-agent.com`. Requires Docker running and
 `CLOUDFLARE_API_TOKEN` (or `npx wrangler login`).
 
-## 6. The OpenAI side
+## 4. The OpenAI side
 
 If the project, webhook endpoint, and API key survived from the GCP era,
 nothing changes — the webhook URL is the same fixed hostname. Otherwise,
 on <https://platform.openai.com>, in the project named by
-`OPENAI_PROJECT_ID` in `app/wrangler.jsonc`:
+`openai_project_id` in `tofu/workspace.tf`:
 
 1. Make sure billing is enabled (the Realtime API bills per token).
 2. Under **Settings → Project → Webhooks**, create an endpoint subscribed
@@ -72,7 +61,7 @@ on <https://platform.openai.com>, in the project named by
 3. Copy the endpoint's signing secret (`whsec_...`), and under **API
    keys** create a key scoped to the project.
 
-## 7. Upload the secrets
+## 5. Upload the secrets
 
 ```bash
 npx wrangler secret put OPENAI_API_KEY
@@ -83,7 +72,7 @@ Each command waits for a paste + enter; the values go straight to the
 Worker and are never in the repo or OpenTofu state. Rotation later is the
 same command again — it takes effect immediately, no redeploy.
 
-## 8. Call the number
+## 6. Call the number
 
 Call `tofu output -raw twilio_phone_number` from an allowlisted phone. You
 hear a few seconds of ringing while the call's container starts — the

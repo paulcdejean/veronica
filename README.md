@@ -38,15 +38,19 @@ write-once, whatever happens behind them.
 The repo is two roots:
 
 - `app/` is the Cloudflare deployable: the Worker source, the driver's Go
-  module, and `wrangler.jsonc` tying them together. `wrangler deploy`
-  builds the container image, pushes it to Cloudflare's registry
+  module, and `wrangler.template.jsonc` tying them together. `wrangler
+  deploy` builds the container image, pushes it to Cloudflare's registry
   (content-addressed — no `:latest`), deploys the Worker, and claims the
   custom domain in one verb.
 - `tofu/` (pinned providers, `veronica` workspace, the state backend from
   `lightning`) owns what exists outside the deploy: the contacts KV
   namespace with one key per name in `allowed_callers.txt` (the numbers
   typed into the dashboard so they never enter the repo), the Twilio
-  number, and the zone's SSL setting.
+  number, and the zone's SSL setting. The apply also renders the
+  workspace's actual `app/wrangler.jsonc` (gitignored) from the template,
+  stitching in the workspace values — worker name, hostname, contacts
+  namespace id, and Veronica's persona from `workspace.tf` — so one
+  template serves every workspace.
 
 The driver keeps the established Go shape: a thin entry point
 (`cmd/driver`) over `internal/` packages split by who they talk to —
@@ -67,7 +71,7 @@ pure logic has table tests; `go test ./...` in `app/driver` runs them.
   account SID and auth token)
 - An OpenAI account with API billing enabled (the Realtime API is not
   covered by a ChatGPT subscription); its project id lives in
-  `app/wrangler.jsonc` as `OPENAI_PROJECT_ID`
+  `tofu/workspace.tf` as `openai_project_id`
 
 ## Deploy
 
@@ -91,7 +95,7 @@ key, the secrets), and the wrangler deploy — through a working phone call.
    the dispatch to the driver's `/call` endpoint. The caller keeps hearing
    ringing — nothing has answered yet.
 4. The driver accepts the call with the session config — model, voice, and
-   Veronica's instructions, from `app/wrangler.jsonc`. The ringing stops:
+   Veronica's instructions, from `tofu/workspace.tf`. The ringing stops:
    this is the pickup. It attaches the call's WebSocket in the same breath
    (the webhook is answered only once both have happened, so a failure
    makes OpenAI redeliver — idempotently, to the same container), waits a
@@ -104,8 +108,9 @@ key, the secrets), and the wrangler deploy — through a working phone call.
 Changing a caller's number is a KV dashboard edit — it takes effect on the
 next call (and, for removals, on live calls within a minute). Adding or
 removing a *name* means editing `allowed_callers.txt` and applying `tofu/`.
-Changing the persona, voice, or model is an edit to `app/wrangler.jsonc`
-and a `wrangler deploy`; so is changing either program's code.
+Changing the persona, voice, or model is an edit to `tofu/workspace.tf`,
+an apply (which re-renders `app/wrangler.jsonc`), and a `wrangler deploy`;
+changing either program's code is just the deploy.
 
 ## Operations
 
