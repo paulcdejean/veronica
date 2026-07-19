@@ -1,8 +1,8 @@
 // Veronica's Cloudflare deployable: the voice Worker (front door) and the
 // session-driver container it dispatches calls to. `wrangler deploy` from
-// this directory builds driver/Dockerfile, pushes it to Cloudflare's
-// registry, deploys the Worker, and claims the custom domain — the one
-// deploy verb for everything a call touches.
+// this directory deploys the Worker, points the container at the
+// pre-built driver image in Artifact Registry (built remotely by the tofu
+// apply — no local Docker anywhere), and claims the custom domain.
 //
 // This is a template: ../tofu renders it to the gitignored wrangler.jsonc
 // on apply, filling in the workspace-specific values (worker name,
@@ -28,10 +28,13 @@
   // One driver container per live call, addressed by call_id through the
   // DRIVER Durable Object namespace. max_instances is a safety ceiling on
   // concurrent calls, not warm capacity — zero calls is zero containers.
+  // The image is the content-addressed tag Cloud Build pushed to Artifact
+  // Registry; Cloudflare pulls it with the credential registered per
+  // SETUP.md.
   "containers": [
     {
       "class_name": "Driver",
-      "image": "./driver/Dockerfile",
+      "image": ${jsonencode(driver_image)},
       "instance_type": "basic",
       "max_instances": 10
     }

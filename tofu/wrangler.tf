@@ -12,12 +12,17 @@ resource "local_file" "wrangler_config" {
     workspace             = tofu.workspace
     voice_hostname        = local.workspace.voice_hostname
     contacts_namespace_id = cloudflare_workers_kv_namespace.contacts.id
+    driver_image          = local.driver_image
     openai_project_id     = local.workspace.openai_project_id
     voice_model           = local.workspace.voice_model
     voice_voice           = local.workspace.voice_voice
     voice_greeting        = local.workspace.voice_greeting
     voice_instructions    = trimspace(local.workspace.voice_instructions)
   })
+
+  # Never render a config that names an image the registry doesn't hold
+  # yet: the build blocks the apply until the tag is pullable.
+  depends_on = [terraform_data.image]
 
   lifecycle {
     precondition {

@@ -8,6 +8,16 @@ output "contacts_console_url" {
   description = "Edit the callers' phone numbers here (E.164, for example +15125551234)."
 }
 
+output "image_pull_service_account" {
+  value       = google_service_account.image_pull.email
+  description = "Cloudflare pulls the driver image as this identity; register it once with wrangler per SETUP.md."
+}
+
+output "driver_image" {
+  value       = local.driver_image
+  description = "The content-addressed image tag the rendered wrangler.jsonc deploys."
+}
+
 output "twilio_phone_number" {
   value       = twilio_api_accounts_incoming_phone_numbers.voice.phone_number
   description = "The purchased number; give it to the allowed callers."

@@ -17,6 +17,20 @@ terraform {
       source  = "hashicorp/local"
       version = "2.9.0"
     }
+
+    # The driver image is built by Cloud Build into Artifact Registry
+    # (see image.tf) — no local Docker anywhere — and Cloudflare pulls it
+    # from there. Google Cloud is also where future non-telephony pieces
+    # will live.
+    google = {
+      source  = "hashicorp/google"
+      version = "7.39.0"
+    }
+
+    time = {
+      source  = "hashicorp/time"
+      version = "0.14.0"
+    }
   }
 
   backend "s3" {
@@ -41,3 +55,8 @@ provider "cloudflare" {}
 # Reads TWILIO_API_KEY/TWILIO_API_SECRET from the environment, falling back
 # to TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN.
 provider "twilio" {}
+
+provider "google" {
+  project = local.workspace.project_id
+  region  = local.workspace.region
+}

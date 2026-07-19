@@ -14,6 +14,9 @@ locals {
   # its template on apply — see wrangler.tf.
   workspaces = {
     veronica = {
+      project_id = "untrusted-agent"
+      region     = "us-central1"
+
       voice_zone      = "veronica-agent.com"
       voice_hostname  = "voice.veronica-agent.com"
       voice_area_code = "205"

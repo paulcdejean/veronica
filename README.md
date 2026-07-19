@@ -39,18 +39,22 @@ The repo is two roots:
 
 - `app/` is the Cloudflare deployable: the Worker source, the driver's Go
   module, and `wrangler.template.jsonc` tying them together. `wrangler
-  deploy` builds the container image, pushes it to Cloudflare's registry
-  (content-addressed — no `:latest`), deploys the Worker, and claims the
-  custom domain in one verb.
+  deploy` deploys the Worker, points the container at the pre-built
+  driver image, and claims the custom domain.
 - `tofu/` (pinned providers, `veronica` workspace, the state backend from
-  `lightning`) owns what exists outside the deploy: the contacts KV
+  `lightning`) owns everything the deploy stands on: the contacts KV
   namespace with one key per name in `allowed_callers.txt` (the numbers
   typed into the dashboard so they never enter the repo), the Twilio
-  number, and the zone's SSL setting. The apply also renders the
-  workspace's actual `app/wrangler.jsonc` (gitignored) from the template,
-  stitching in the workspace values — worker name, hostname, contacts
-  namespace id, and Veronica's persona from `workspace.tf` — so one
-  template serves every workspace.
+  number, the zone's SSL setting, and the driver image itself — built
+  remotely by Cloud Build into Artifact Registry whenever the driver
+  source changes (no local Docker anywhere), tagged with the source hash
+  so every tag is immutable. The apply then renders the workspace's
+  actual `app/wrangler.jsonc` (gitignored) from the template, stitching
+  in the workspace values — worker name, hostname, contacts namespace id,
+  the image tag it just built, and Veronica's persona from `workspace.tf`
+  — so one template serves every workspace. Cloudflare pulls the image
+  from Artifact Registry as a dedicated read-only service account,
+  registered once with `wrangler containers registries configure`.
 
 The driver keeps the established Go shape: a thin entry point
 (`cmd/driver`) over `internal/` packages split by who they talk to —
@@ -60,8 +64,11 @@ pure logic has table tests; `go test ./...` in `app/driver` runs them.
 
 ## Prerequisites
 
-- OpenTofu `1.12.3`, Node 22+, and Docker (or a Docker-compatible CLI —
-  wrangler builds the driver image locally, even for `--dry-run`)
+- OpenTofu `1.12.3`, Node 22+, and the `gcloud` CLI (the apply hands image
+  builds to Cloud Build; nothing builds locally)
+- Google application-default credentials with access to the project in
+  `tofu/workspace.tf` (`gcloud auth login` and
+  `gcloud auth application-default login`)
 - The same `cloudflare` AWS profile used by `lightning`, with access to its
   R2 bucket named `tofu` (the state backend)
 - `CLOUDFLARE_API_TOKEN` exported, with edit access to Workers scripts,
@@ -109,8 +116,10 @@ Changing a caller's number is a KV dashboard edit — it takes effect on the
 next call (and, for removals, on live calls within a minute). Adding or
 removing a *name* means editing `allowed_callers.txt` and applying `tofu/`.
 Changing the persona, voice, or model is an edit to `tofu/workspace.tf`,
-an apply (which re-renders `app/wrangler.jsonc`), and a `wrangler deploy`;
-changing either program's code is just the deploy.
+an apply (which re-renders `app/wrangler.jsonc`), and a `wrangler deploy`.
+Changing the driver's code is an apply (which rebuilds the image and pins
+the new tag into the config) and the same deploy; Worker code alone is
+just the deploy.
 
 ## Operations
 
