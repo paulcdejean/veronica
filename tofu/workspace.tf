@@ -50,7 +50,7 @@ locals {
       # How long the driver lets the audio path bridge before speaking the
       # greeting. Too short clips the greeting's start ("...ronica
       # speaking"); too long is dead air after the pickup.
-      voice_greeting_settle_ms = 1000
+      voice_greeting_settle_ms = 100
 
       voice_instructions = <<-EOT
         You are Veronica, an AI personal assistant.
