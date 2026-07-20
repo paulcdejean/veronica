@@ -18,44 +18,6 @@ locals {
   registry_hostname = split("/", local.image_repository)[0]
 }
 
-# The permission-group catalog for account-scoped tokens; pick "Workers
-# Containers Write" by exact name rather than hardcoding an id.
-data "cloudflare_api_token_permission_groups_list" "account_scope" {
-  scope = "com.cloudflare.api.account"
-
-  lifecycle {
-    postcondition {
-      condition     = contains([for group in self.result : group.name], "Workers Containers Write")
-      error_message = "The permission-group catalog has no 'Workers Containers Write'; the registries token cannot be scoped."
-    }
-  }
-}
-
-locals {
-  containers_write_id = one([
-    for group in data.cloudflare_api_token_permission_groups_list.account_scope.result :
-    group.id if group.name == "Workers Containers Write"
-  ])
-}
-
-# A token that can do exactly one thing on exactly one account: manage
-# container registries. Its value lives in state, which is acceptable for
-# a scope this narrow.
-resource "cloudflare_account_token" "registry" {
-  account_id = local.workspace.cloudflare_account_id
-  name       = "${tofu.workspace}-container-registries"
-
-  policies = [{
-    effect = "allow"
-    permission_groups = [
-      { id = local.containers_write_id }
-    ]
-    resources = jsonencode({
-      "com.cloudflare.api.account.${local.workspace.cloudflare_account_id}" = "*"
-    })
-  }]
-}
-
 # The private half of the pull identity (image.tf owns the SA itself).
 # google_service_account_key.private_key is the base64 of the JSON key
 # file — exactly the encoding wrangler stores, so it passes through
