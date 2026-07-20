@@ -21,11 +21,6 @@ import (
 	"github.com/paulcdejean/veronica/driver/internal/realtime"
 )
 
-// The SIP answer and Twilio's bridging take a beat to connect the caller's
-// audio path after accept; a greeting spoken too early reaches the caller
-// clipped ("...ronica speaking").
-const greetingSettle = 1 * time.Second
-
 // Realtime sessions cap at 60 minutes; leave on our own terms before then.
 // The container's sleepAfter fuse (wrangler.jsonc) must stay above this.
 const sessionCap = 55 * time.Minute
@@ -42,6 +37,11 @@ type Config struct {
 	Model        string
 	Voice        string
 	Instructions string
+	// How long to let the audio path bridge after accept before speaking
+	// the greeting: the SIP answer and Twilio's bridging take a beat, and
+	// a greeting spoken too early reaches the caller clipped ("...ronica
+	// speaking"). Tuned in workspace.tf (voice_greeting_settle_ms).
+	GreetingSettle time.Duration
 }
 
 // call is the dispatch the Worker POSTs to /call.
@@ -169,7 +169,7 @@ func (h *Handler) hold(ctx context.Context, cancel context.CancelFunc, conn *rea
 	}
 
 	select {
-	case <-time.After(greetingSettle):
+	case <-time.After(h.cfg.GreetingSettle):
 	case <-ctx.Done():
 		h.exit(0)
 		return

@@ -26,6 +26,7 @@ export class Driver extends Container<Env> {
       VOICE_MODEL: env.VOICE_MODEL,
       VOICE_VOICE: env.VOICE_VOICE,
       VOICE_GREETING: env.VOICE_GREETING,
+      VOICE_GREETING_SETTLE_MS: env.VOICE_GREETING_SETTLE_MS,
       VOICE_INSTRUCTIONS: env.VOICE_INSTRUCTIONS,
     };
   }

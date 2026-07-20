@@ -48,9 +48,7 @@ registered there too.
 
 ## 4. The OpenAI side
 
-If the project, webhook endpoint, and API key survived from the GCP era,
-nothing changes — the webhook URL is the same fixed hostname. Otherwise,
-on <https://platform.openai.com>, in the project named by
+On <https://platform.openai.com>, in the project named by
 `openai_project_id` in `tofu/workspace.tf`:
 
 1. Make sure billing is enabled (the Realtime API bills per token).

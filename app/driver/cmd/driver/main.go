@@ -26,6 +26,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/paulcdejean/veronica/driver/internal/session"
@@ -66,15 +67,21 @@ func configFromEnv() (session.Config, error) {
 		Instructions: os.Getenv("VOICE_INSTRUCTIONS"),
 	}
 	for name, value := range map[string]string{
-		"OPENAI_API_KEY":     cfg.APIKey,
-		"VOICE_GREETING":     cfg.Greeting,
-		"VOICE_MODEL":        cfg.Model,
-		"VOICE_VOICE":        cfg.Voice,
-		"VOICE_INSTRUCTIONS": cfg.Instructions,
+		"OPENAI_API_KEY":           cfg.APIKey,
+		"VOICE_GREETING":           cfg.Greeting,
+		"VOICE_MODEL":              cfg.Model,
+		"VOICE_VOICE":              cfg.Voice,
+		"VOICE_INSTRUCTIONS":       cfg.Instructions,
+		"VOICE_GREETING_SETTLE_MS": os.Getenv("VOICE_GREETING_SETTLE_MS"),
 	} {
 		if value == "" {
 			return session.Config{}, fmt.Errorf("%s must be set", name)
 		}
 	}
+	settle, err := strconv.Atoi(os.Getenv("VOICE_GREETING_SETTLE_MS"))
+	if err != nil || settle < 0 {
+		return session.Config{}, fmt.Errorf("VOICE_GREETING_SETTLE_MS must be a non-negative integer, got %q", os.Getenv("VOICE_GREETING_SETTLE_MS"))
+	}
+	cfg.GreetingSettle = time.Duration(settle) * time.Millisecond
 	return cfg, nil
 }

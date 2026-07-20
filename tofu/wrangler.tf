@@ -16,9 +16,10 @@ resource "local_file" "wrangler_config" {
     driver_image          = local.driver_image
     openai_project_id     = local.workspace.openai_project_id
     voice_model           = local.workspace.voice_model
-    voice_voice           = local.workspace.voice_voice
-    voice_greeting        = local.workspace.voice_greeting
-    voice_instructions    = trimspace(local.workspace.voice_instructions)
+    voice_voice              = local.workspace.voice_voice
+    voice_greeting           = local.workspace.voice_greeting
+    voice_greeting_settle_ms = tostring(local.workspace.voice_greeting_settle_ms)
+    voice_instructions       = trimspace(local.workspace.voice_instructions)
   })
 
   # Never render a config that names an image the registry doesn't hold

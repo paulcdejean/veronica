@@ -75,6 +75,7 @@
     "VOICE_MODEL": ${jsonencode(voice_model)},
     "VOICE_VOICE": ${jsonencode(voice_voice)},
     "VOICE_GREETING": ${jsonencode(voice_greeting)},
+    "VOICE_GREETING_SETTLE_MS": ${jsonencode(voice_greeting_settle_ms)},
     "VOICE_INSTRUCTIONS": ${jsonencode(voice_instructions)}
   },
 

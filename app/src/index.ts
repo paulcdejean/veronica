@@ -13,6 +13,10 @@ import { allowedNumbers } from "./contacts";
 import { twiml, verifySignature, callerNumber, rejectCall, type IncomingCall } from "./openai";
 
 export { Driver };
+// The outbound interception behind Driver.outboundByHost runs through this
+// entrypoint; the runtime looks it up on the worker's exports at container
+// start and refuses to start without it.
+export { ContainerProxy } from "@cloudflare/containers";
 
 export default {
   async fetch(request, env): Promise<Response> {
