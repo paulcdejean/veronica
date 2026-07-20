@@ -18,10 +18,12 @@ via Cloud Build into Artifact Registry (the apply blocks until the tag is
 pullable; it rebuilds only when `app/driver` changes), renders the
 workspace's `app/wrangler.jsonc` from `app/wrangler.template.jsonc`
 (gitignored — the apply stitches in the namespace id, hostname, image
-tag, and persona, so nothing is hand-copied between the roots), and —
-first apply only — imports the existing Twilio phone number into this
-root's state (the `import` block in `twilio.tf`; releasing a number is
-permanent, so it is adopted, never recreated).
+tag, and persona, so nothing is hand-copied between the roots), registers
+the image-pull credential with Cloudflare's Containers registries API
+(no manual wrangler command, no key on disk), and — first apply only —
+imports the existing Twilio phone number into this root's state (the
+`import` block in `twilio.tf`; releasing a number is permanent, so it is
+adopted, never recreated).
 
 ## 2. Fill in the caller numbers
 
@@ -30,37 +32,21 @@ caller's number in E.164 form (`+15125551234`). A number's presence is
 what authorizes the caller; edits take effect on the next call, no apply,
 no deploy.
 
-## 3. Register the image-pull credential (once)
-
-Cloudflare pulls the driver image from Artifact Registry as the read-only
-service account the apply created. Mint it a key and hand it straight to
-wrangler (it lands in Cloudflare's Secrets Store; the file must not
-linger):
+## 3. Deploy the app
 
 ```bash
-cd ../app && npm install
-PULL_SA=$(cd ../tofu && tofu output -raw image_pull_service_account)
-gcloud iam service-accounts keys create gar-pull-key.json --iam-account "$PULL_SA"
-cat gar-pull-key.json | npx wrangler containers registries configure \
-  us-central1-docker.pkg.dev --gar-email "$PULL_SA" \
-  --secret-name veronica-gar-pull --skip-confirmation
-rm gar-pull-key.json
-```
-
-Key rotation later is the same dance again.
-
-## 4. Deploy the app
-
-```bash
+cd ../app
+npm install
 npx wrangler deploy
 ```
 
 Deploys the Worker, points the container at the image tag in the rendered
 config, and claims `voice.veronica-agent.com`. Needs
 `CLOUDFLARE_API_TOKEN` (or `npx wrangler login`) — but no Docker: the
-image was built remotely in step 1.
+image was built remotely in step 1, and its pull credential was
+registered there too.
 
-## 5. The OpenAI side
+## 4. The OpenAI side
 
 If the project, webhook endpoint, and API key survived from the GCP era,
 nothing changes — the webhook URL is the same fixed hostname. Otherwise,
@@ -79,7 +65,7 @@ on <https://platform.openai.com>, in the project named by
 3. Copy the endpoint's signing secret (`whsec_...`), and under **API
    keys** create a key scoped to the project.
 
-## 6. Upload the secrets
+## 5. Upload the secrets
 
 ```bash
 npx wrangler secret put OPENAI_API_KEY
@@ -90,7 +76,7 @@ Each command waits for a paste + enter; the values go straight to the
 Worker and are never in the repo or OpenTofu state. Rotation later is the
 same command again — it takes effect immediately, no redeploy.
 
-## 7. Call the number
+## 6. Call the number
 
 Call `tofu output -raw twilio_phone_number` from an allowlisted phone. You
 hear a few seconds of ringing while the call's container starts — the

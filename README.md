@@ -54,7 +54,7 @@ The repo is two roots:
   the image tag it just built, and Veronica's persona from `workspace.tf`
   — so one template serves every workspace. Cloudflare pulls the image
   from Artifact Registry as a dedicated read-only service account,
-  registered once with `wrangler containers registries configure`.
+  registered automatically by tofu (see `tofu/registries.tf`).
 
 The driver keeps the established Go shape: a thin entry point
 (`cmd/driver`) over `internal/` packages split by who they talk to —

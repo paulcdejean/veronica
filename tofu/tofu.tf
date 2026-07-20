@@ -31,6 +31,14 @@ terraform {
       source  = "hashicorp/time"
       version = "0.14.0"
     }
+
+    # Calls the undocumented Cloudflare Containers registries API from the
+    # apply itself, using a scoped API token created alongside it — no
+    # manual wrangler command, no key on disk.
+    restapi = {
+      source  = "mastercard/restapi"
+      version = "2.0.1"
+    }
   }
 
   backend "s3" {
@@ -59,4 +67,19 @@ provider "twilio" {}
 provider "google" {
   project = local.workspace.project_id
   region  = local.workspace.region
+}
+
+# Speaks the undocumented Containers registries API (see registries.tf).
+# The scoped token it authenticates with exists only at apply time;
+# OpenTofu defers configuring the provider until the value is known, and
+# destroys the registry object before the token. Pinned to the SDKv2 line
+# (2.x) in required_providers: 3.0.0's framework rewrite rejects unknown
+# provider-config values at plan, which breaks exactly this bootstrap.
+provider "restapi" {
+  alias = "cloudflare_containers"
+  uri   = "https://api.cloudflare.com/client/v4/accounts/${local.workspace.cloudflare_account_id}/containers"
+
+  headers = {
+    Authorization = "Bearer ${cloudflare_account_token.registry.value}"
+  }
 }

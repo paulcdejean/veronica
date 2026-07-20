@@ -8,26 +8,6 @@
 # during calls), so a number change takes effect on the next call — or
 # within a minute on a live one — no apply, no redeploy.
 
-# The token sees multiple accounts; list them all and pick the workspace's
-# by exact name here, rather than trusting the API's name filter to do the
-# choosing.
-data "cloudflare_accounts" "all" {
-  max_items = 10
-  lifecycle {
-    postcondition {
-      condition     = coalesce(self.result, null) != null
-      error_message = "No cloudflare accounts returned?"
-    }
-  }
-}
-
-locals {
-  # cloudflare_account_id = one([
-  #   for account in data.cloudflare_accounts.all.result :
-  #   account.id if account.name == local.workspace.cloudflare_account_name
-  # ])
-}
-
 resource "cloudflare_workers_kv_namespace" "contacts" {
   account_id = local.workspace.cloudflare_account_id
   title      = "${tofu.workspace}-contacts"

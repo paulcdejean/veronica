@@ -51,10 +51,9 @@ resource "google_artifact_registry_repository_iam_member" "build_pushes" {
   member     = "serviceAccount:${google_service_account.build.email}"
 }
 
-# Cloudflare's identity for pulling the image, registered once with
-# `wrangler containers registries configure` (SETUP.md): the SA email is the
-# public half, and a key Paul creates with gcloud is the private half —
-# handed straight to wrangler, never through OpenTofu.
+# Cloudflare's identity for pulling the image: the SA email is the public
+# half, and registries.tf creates a key + registers it with the Cloudflare
+# Containers registries API — no manual wrangler step, no key on disk.
 resource "google_service_account" "image_pull" {
   account_id   = "voice-pull-${tofu.workspace}"
   display_name = "Veronica driver image pull (Cloudflare)"
