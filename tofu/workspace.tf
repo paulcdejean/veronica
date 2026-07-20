@@ -45,7 +45,7 @@ locals {
       # marin (female, recommended)
       # cedar (male, recommended)
       voice_voice    = "marin" # Steven's preference
-      voice_greeting = "Veronica speaking"
+      voice_greeting = "Veronica speaking, what can I do for you?"
 
       # How long the driver lets the audio path bridge before speaking the
       # greeting. Too short clips the greeting's start ("...ronica
