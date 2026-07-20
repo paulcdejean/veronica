@@ -12,6 +12,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": ${jsonencode("${workspace}-voice")},
+  // Pinned because the API token sees several accounts; without it
+  // wrangler would have to guess, exactly the mistake the render exists
+  // to prevent.
+  "account_id": ${jsonencode(account_id)},
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
 

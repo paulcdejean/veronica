@@ -4,7 +4,7 @@ output "contacts_namespace_id" {
 }
 
 output "contacts_console_url" {
-  value       = "https://dash.cloudflare.com/${data.cloudflare_accounts.this.result[0].id}/workers/kv/namespaces/${cloudflare_workers_kv_namespace.contacts.id}"
+  value       = "https://dash.cloudflare.com/${local.workspace.cloudflare_account_id}/workers/kv/namespaces/${cloudflare_workers_kv_namespace.contacts.id}"
   description = "Edit the callers' phone numbers here (E.164, for example +15125551234)."
 }
 

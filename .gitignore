@@ -25,3 +25,5 @@ node_modules/
 # Locally built driver binary (go build writes it into the cwd).
 app/driver/driver
 app/driver/cmd/driver/driver
+
+.commandcode/

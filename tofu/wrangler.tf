@@ -10,6 +10,7 @@ resource "local_file" "wrangler_config" {
 
   content = templatefile("${path.module}/../app/wrangler.template.jsonc", {
     workspace             = tofu.workspace
+    account_id            = local.workspace.cloudflare_account_id
     voice_hostname        = local.workspace.voice_hostname
     contacts_namespace_id = cloudflare_workers_kv_namespace.contacts.id
     driver_image          = local.driver_image

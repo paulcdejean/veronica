@@ -17,6 +17,10 @@ locals {
       project_id = "untrusted-agent"
       region     = "us-central1"
 
+      # The API token is a user token with access to several accounts, so
+      # every account-scoped lookup must name the one it means.
+      cloudflare_account_id = "287cae24e46a0aeed1dbc2942fc58dd7"
+
       voice_zone      = "veronica-agent.com"
       voice_hostname  = "voice.veronica-agent.com"
       voice_area_code = "205"
