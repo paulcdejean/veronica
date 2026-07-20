@@ -1,63 +1,102 @@
-# From a successful apply to a phone call
+# From tofu init to a phone call
 
-Everything below assumes `tofu apply` has completed in both layers.
-Commands run on your machine; `tofu output` commands run from `tofu/`.
+This walks the whole deployment in order. It assumes the credentials from
+README.md's prerequisites are set up.
 
-## 1. Create the OpenAI webhook endpoint
+## 1. Apply tofu/
+
+```bash
+cd tofu
+tofu init
+tofu workspace select veronica   # `tofu workspace new veronica` the first time
+tofu apply
+```
+
+Creates the contacts KV namespace (one empty key per name in
+`allowed_callers.txt`), sets the zone's SSL mode, builds the driver image
+via Cloud Build into Artifact Registry (the apply blocks until the tag is
+pullable; it rebuilds only when `app/driver` changes), renders the
+workspace's `app/wrangler.jsonc` from `app/wrangler.template.jsonc`
+(gitignored — the apply stitches in the namespace id, hostname, image
+tag, and persona, so nothing is hand-copied between the roots), registers
+the image-pull credential with Cloudflare's Containers registries API
+(no manual wrangler command, no key on disk), and — first apply only —
+imports the existing Twilio phone number into this root's state (the
+`import` block in `twilio.tf`; releasing a number is permanent, so it is
+adopted, never recreated).
+
+## 2. Fill in the caller numbers
+
+Open `tofu output -raw contacts_console_url` and give each contact key the
+caller's number in E.164 form (`+15125551234`). A number's presence is
+what authorizes the caller; edits take effect on the next call, no apply,
+no deploy.
+
+## 3. Deploy the app
+
+```bash
+cd ../app
+npm install
+npx wrangler deploy
+```
+
+Deploys the Worker, points the container at the image tag in the rendered
+config, and claims `voice.veronica-agent.com`. Needs
+`CLOUDFLARE_API_TOKEN` (or `npx wrangler login`) — but no Docker: the
+image was built remotely in step 1, and its pull credential was
+registered there too.
+
+## 4. The OpenAI side
 
 On <https://platform.openai.com>, in the project named by
-`openai_project_id`:
+`openai_project_id` in `tofu/workspace.tf`:
 
 1. Make sure billing is enabled (the Realtime API bills per token).
-2. Under **Settings → Project → Webhooks**, create an endpoint with the URL
-   from `tofu output -raw openai_webhook_url`, subscribed to the
-   `realtime.call.incoming` event.
-3. Copy the endpoint's signing secret (`whsec_...`) — it is uploaded to the
-   Worker in step 3.
+2. Under **Settings → Project → Webhooks**, create an endpoint subscribed
+   to the `realtime.call.incoming` event, with the URL from
+   `tofu output -raw openai_webhook_url`:
 
-## 2. Create the API key
+   ```
+   https://voice.veronica-agent.com/openai-webhook
+   ```
 
-Under **API keys**, create a key scoped to the same project. The Worker
-uses it to accept/reject calls and to nudge the greeting.
+3. Copy the endpoint's signing secret (`whsec_...`), and under **API
+   keys** create a key scoped to the project.
 
-## 3. Upload the Worker's secrets
-
-The two secrets go straight from your clipboard to Cloudflare via wrangler
-— never through OpenTofu. `CLOUDFLARE_API_TOKEN` in the environment is
-enough for wrangler; each command prompts for the value:
+## 5. Upload the secrets
 
 ```bash
-npx wrangler secret put OPENAI_API_KEY --name "$(tofu output -raw worker_name)"
-npx wrangler secret put OPENAI_WEBHOOK_SECRET --name "$(tofu output -raw worker_name)"
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put OPENAI_WEBHOOK_SECRET
 ```
 
-Re-running `tofu apply` later keeps these secrets in place
-(`keep_bindings`), so this step happens once.
+Each command waits for a paste + enter; the values go straight to the
+Worker and are never in the repo or OpenTofu state. Rotation later is the
+same command again — it takes effect immediately, no redeploy.
 
-## 4. Fill in the caller numbers
+## 6. Call the number
 
-If you have not already: open `tofu output -raw contacts_dashboard_url`
-and give each contact entry the caller's number in E.164 form
-(`+15125551234`). A number's presence is what authorizes the caller, and
-edits take effect on the next call.
+Call `tofu output -raw twilio_phone_number` from an allowlisted phone. You
+hear a few seconds of ringing while the call's container starts — the
+driver is what picks up — then Veronica's greeting. Hang up to end the
+call; the container stops with it.
 
-## 5. Call the number
-
-Call `tofu output -raw twilio_phone_number` from an allowlisted phone.
-Veronica speaks the greeting first; hang up to end the call.
-
-If the call does not connect, check in order:
+If the call does not connect, watch the logs while calling:
 
 ```bash
-npx wrangler tail "$(tofu output -raw worker_name)"   # webhook received? accepted or rejected?
+cd app && npm run tail
 ```
 
-- Nothing in the tail: Twilio never reached the Worker or OpenAI never sent
-  the webhook — the Twilio console's call log shows the TwiML fetch and the
-  SIP leg's response code.
-- `bad or missing signature`: the uploaded `OPENAI_WEBHOOK_SECRET` does not
+- Nothing at all: Twilio never reached the Worker or OpenAI never sent the
+  webhook — the Twilio console's call log shows the TwiML fetch and the
+  SIP leg's response code, and the OpenAI webhook page shows delivery
+  attempts.
+- `bad or missing signature`: the stored `OPENAI_WEBHOOK_SECRET` does not
   match the endpoint's signing secret.
-- `not in allowlist`: the KV value is missing, malformed, or not the number
-  you are calling from.
-- Accepted but silent: check the session in platform.openai.com's Logs; if
-  the greeting nudge failed the model still answers when you speak first.
+- `not in allowlist`: the KV value is missing, malformed, or not the
+  number you are calling from.
+- `dispatching call ...` but no pickup: the driver container failed to
+  start or the accept failed — the container's own logs are in the
+  dashboard under the worker's **Containers** tab, and a non-2xx dispatch
+  makes OpenAI redeliver the webhook, so transient failures retry
+  themselves.
