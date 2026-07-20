@@ -54,6 +54,11 @@ resource "restapi_object" "gar_registry" {
   path      = "/registries"
   object_id = local.registry_hostname
 
+  # Registry records have no "id" — the domain is their identity. Without
+  # this, the provider's post-create read finds the record but can't
+  # extract an id from it and declares the object absent.
+  id_attribute = "domain"
+
   data = jsonencode({
     domain    = local.registry_hostname
     is_public = false
